@@ -1,9 +1,8 @@
 //! Standard library — universal builtin functions.
 //!
 //! Only builtins that can be implemented in ALL five backends are included.
-//! Collection builtins (map, filter, sort, etc.) require generic types that
-//! C cannot express, so they are excluded. What remains is a clean set of
-//! 13 math and string primitives that work identically everywhere.
+//! What remains is a clean set of 18 primitives: math, string, and algorithm
+//! builtins that are fully inlined — no call to an existing language primitive.
 //!
 //! Syntax in source files:  builtin::abs   builtin::to_upper   etc.
 //!
@@ -18,12 +17,17 @@ use crate::ast::{Backend, Param};
 mod abs;
 mod clamp;
 mod ends_with;
+mod insertion_sort;
+mod merge_sort;
 mod parse_i64;
 mod pow;
 mod powf;
+mod quick_sort;
+mod radix_sort;
 mod replace_str;
 mod sqrt;
 mod starts_with;
+mod swap;
 mod to_lower;
 mod to_string;
 mod to_upper;
@@ -31,7 +35,7 @@ mod trim;
 
 // ── Universal builtin set ─────────────────────────────────────────────────────
 
-/// The 13 universal builtins — available in every backend.
+/// The 18 universal builtins — available in every backend.
 pub const BUILTINS: &[(&str, &str, &str)] = &[
     abs::META,
     pow::META,
@@ -46,6 +50,11 @@ pub const BUILTINS: &[(&str, &str, &str)] = &[
     replace_str::META,
     to_string::META,
     parse_i64::META,
+    swap::META,
+    insertion_sort::META,
+    quick_sort::META,
+    merge_sort::META,
+    radix_sort::META,
 ];
 
 /// Returns true if the name is a known universal builtin.
@@ -69,19 +78,24 @@ pub fn emit_builtin(name: &str, params: &[Param], backend: &Backend) -> Result<S
         ));
     }
     match name {
-        "abs"         => abs::emit(params, backend),
-        "pow"         => pow::emit(params, backend),
-        "powf"        => powf::emit(params, backend),
-        "sqrt"        => sqrt::emit(params, backend),
-        "clamp"       => clamp::emit(params, backend),
-        "to_upper"    => to_upper::emit(params, backend),
-        "to_lower"    => to_lower::emit(params, backend),
-        "trim"        => trim::emit(params, backend),
-        "starts_with" => starts_with::emit(params, backend),
-        "ends_with"   => ends_with::emit(params, backend),
-        "replace_str" => replace_str::emit(params, backend),
-        "to_string"   => to_string::emit(params, backend),
-        "parse_i64"   => parse_i64::emit(params, backend),
+        "abs"            => abs::emit(params, backend),
+        "pow"            => pow::emit(params, backend),
+        "powf"           => powf::emit(params, backend),
+        "sqrt"           => sqrt::emit(params, backend),
+        "clamp"          => clamp::emit(params, backend),
+        "to_upper"       => to_upper::emit(params, backend),
+        "to_lower"       => to_lower::emit(params, backend),
+        "trim"           => trim::emit(params, backend),
+        "starts_with"    => starts_with::emit(params, backend),
+        "ends_with"      => ends_with::emit(params, backend),
+        "replace_str"    => replace_str::emit(params, backend),
+        "to_string"      => to_string::emit(params, backend),
+        "parse_i64"      => parse_i64::emit(params, backend),
+        "swap"           => swap::emit(params, backend),
+        "insertion_sort" => insertion_sort::emit(params, backend),
+        "quick_sort"     => quick_sort::emit(params, backend),
+        "merge_sort"     => merge_sort::emit(params, backend),
+        "radix_sort"     => radix_sort::emit(params, backend),
         _             => unreachable!(),
     }
 }
