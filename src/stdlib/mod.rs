@@ -19,6 +19,8 @@ mod args;
 mod clamp;
 mod close;
 mod ends_with;
+mod env;
+mod exit;
 mod fd_in;
 mod fd_out;
 mod insertion_sort;
@@ -33,6 +35,7 @@ mod powf;
 mod quick_sort;
 mod radix_sort;
 mod replace_str;
+mod sleep;
 mod sqrt;
 mod starts_with;
 mod swap;
@@ -44,7 +47,7 @@ mod trim;
 
 // ── Universal builtin set ─────────────────────────────────────────────────────
 
-/// The 28 universal builtins — available in every backend.
+/// The 31 universal builtins — available in every backend.
 pub const BUILTINS: &[(&str, &str, &str)] = &[
     // math
     abs::META,
@@ -78,6 +81,9 @@ pub const BUILTINS: &[(&str, &str, &str)] = &[
     time::META,
     // system
     args::META,
+    exit::META,
+    env::META,
+    sleep::META,
 ];
 
 /// Returns true if the name is a known universal builtin.
@@ -128,6 +134,9 @@ pub fn emit_builtin(name: &str, params: &[Param], backend: &Backend) -> Result<S
         "close"          => close::emit(params, backend),
         "time"           => time::emit(params, backend),
         "args"           => args::emit(params, backend),
+        "exit"           => exit::emit(params, backend),
+        "env"            => env::emit(params, backend),
+        "sleep"          => sleep::emit(params, backend),
         _             => unreachable!(),
     }
 }
