@@ -83,6 +83,15 @@ pub fn build(root: &Path, out_dir: &Path, crate_name: &str, backend: &Backend) -
                 );
             }
 
+            let needs_gen = src_refs.iter().any(|(_, sf)| codegen::needs_generic_types(sf));
+            if needs_gen {
+                write_file(
+                    &out_dir.join("bu_generic.h"),
+                    include_str!("bu_generic.h"),
+                    &mut files_written,
+                );
+            }
+
             let mut all_c: Vec<String> = child_modules.iter()
                 .map(|m| format!("{}.c", m)).collect();
             if has_main { all_c.push("main.c".to_string()); }

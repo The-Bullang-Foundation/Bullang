@@ -53,6 +53,10 @@ pub fn needs_foreign_types(file: &SourceFile) -> bool {
     })
 }
 
+pub fn needs_generic_types(file: &SourceFile) -> bool {
+    file.bullets.iter().any(|b| !b.type_params.is_empty())
+}
+
 fn type_needs_foreign(ty: &BuType) -> bool {
     match ty {
         BuType::Named(s) => s.starts_with("Vec[") || s.starts_with("HashMap["),
@@ -70,8 +74,9 @@ pub fn emit_header_c(
     enums:        &[crate::ast::EnumDef],
 ) -> String {
     let guard    = format!("{}_H", module_name.to_uppercase().replace('-', "_"));
-    let needs_ft = source_files.iter().any(|(_, sf)| needs_foreign_types(sf));
-    let mut out  = String::new();
+    let needs_ft  = source_files.iter().any(|(_, sf)| needs_foreign_types(sf));
+    let needs_gen = source_files.iter().any(|(_, sf)| needs_generic_types(sf));
+    let mut out   = String::new();
 
     out.push_str(&format!("#ifndef {}\n#define {}\n\n", guard, guard));
     out.push_str("#include <stdint.h>\n");
@@ -79,6 +84,9 @@ pub fn emit_header_c(
     out.push_str("#include <stddef.h>\n");
     if needs_ft {
         out.push_str("#include \"foreign_types.h\"\n");
+    }
+    if needs_gen {
+        out.push_str("#include \"bu_generic.h\"\n");
     }
     for inc in includes {
         out.push_str(&format!("#include <{}>\n", inc));
@@ -172,21 +180,119 @@ pub fn emit_makefile(
 fn emit_function_c(func: &Bullet) -> String {
     let mut out = String::new();
 
-    if !func.type_params.is_empty() {
-        // C has no generics. Emit a #warning and substitute void* for each type param.
-        out.push_str(&format!(
-            "#warning \"bullang: '{}' is generic — type params {:?} replaced with void*. \
-             Consider a native @c block.\"\n",
-            func.name, func.type_params
-        ));
+    if func.type_params.is_empty() {
+        let params = c_param_list(&func.params);
+        let ret    = bu_type_to_c(&func.output.ty);
+        out.push_str(&format!("{} {}({}) {{\n", ret, func.name, params));
+        emit_body_c(&mut out, &func.body, &func.params, &Backend::C);
+    } else {
+        // Generic function — type params become BuVal.
+        out.push_str("#include \"bu_generic.h\"\n");
+        let params = c_generic_param_list(&func.params, &func.type_params);
+        let ret    = c_generic_type(&func.output.ty, &func.type_params);
+        out.push_str(&format!("{} {}({}) {{\n", ret, func.name, params));
+        emit_body_c_generic(&mut out, &func.body, &func.type_params);
     }
 
-    let params = c_param_list(&func.params);
-    let ret    = bu_type_to_c(&func.output.ty);
-    out.push_str(&format!("{} {}({}) {{\n", ret, func.name, params));
-    emit_body_c(&mut out, &func.body, &func.params, &Backend::C);
     out.push_str("}\n");
     out
+}
+
+/// Param list for a generic C function: type params → BuVal, concrete types unchanged.
+fn c_generic_param_list(params: &[Param], type_params: &[String]) -> String {
+    params.iter()
+        .map(|p| format!("{} {}", c_generic_type(&p.ty, type_params), p.name))
+        .collect::<Vec<_>>().join(", ")
+}
+
+/// Map a type to its C representation — type param names become BuVal.
+fn c_generic_type(ty: &BuType, type_params: &[String]) -> String {
+    match ty {
+        BuType::Named(s) if type_params.contains(s) => "BuVal".to_string(),
+        other => bu_type_to_c(other),
+    }
+}
+
+/// Emit a function body where type-param-typed values are BuVal.
+/// All binary ops use bu_val_* dispatch; integer/float literals are wrapped.
+fn emit_body_c_generic(out: &mut String, body: &BulletBody, type_params: &[String]) {
+    match body {
+        BulletBody::Pipes(pipes) => {
+            if pipes.is_empty() { return; }
+            let last = pipes.len().saturating_sub(1);
+            for (i, pipe) in pipes.iter().enumerate() {
+                let expr_str = emit_expr_c_generic(&pipe.expr, type_params);
+                if i == last {
+                    out.push_str(&format!("    return {};\n", expr_str));
+                } else {
+                    out.push_str(&format!("    BuVal {} = {};\n", pipe.binding, expr_str));
+                }
+            }
+        }
+        BulletBody::Natives(blocks) => {
+            // Native blocks in a generic function are emitted verbatim — user takes
+            // responsibility for using BuVal correctly.
+            if let Some(b) = blocks.iter().find(|b| b.backend == Backend::C || b.backend == Backend::Cpp) {
+                for line in b.code.lines() {
+                    out.push_str(&format!("    {}\n", line));
+                }
+            }
+        }
+        BulletBody::Builtin(name) => {
+            out.push_str(&format!("    /* builtin::{} in generic context */\n", name));
+        }
+    }
+}
+
+/// Expression emitter for generic C functions — all ops route through bu_val_*.
+fn emit_expr_c_generic(expr: &Expr, tp: &[String]) -> String {
+    match expr {
+        Expr::Atom(a)  => emit_atom_c_generic(a, tp),
+        Expr::BinOp(b) => {
+            let l = emit_atom_c_generic(&b.lhs, tp);
+            let r = emit_atom_c_generic(&b.rhs, tp);
+            let fn_name = match b.op.as_str() {
+                "+"  => "bu_val_add",
+                "-"  => "bu_val_sub",
+                "*"  => "bu_val_mul",
+                "/"  => "bu_val_div",
+                "%"  => "bu_val_mod",
+                "==" => "bu_val_eq",
+                "!=" => "bu_val_ne",
+                "<"  => "bu_val_lt",
+                ">"  => "bu_val_gt",
+                "<=" => "bu_val_le",
+                ">=" => "bu_val_ge",
+                "&&" => "bu_val_and",
+                "||" => "bu_val_or",
+                op   => return format!("({} {} {})", l, op, r),
+            };
+            format!("{}({}, {})", fn_name, l, r)
+        }
+        Expr::Tuple(exprs) => {
+            // Tuples in generic context: emit as first element (no tuple type in C).
+            exprs.first().map(|e| emit_expr_c_generic(e, tp))
+                .unwrap_or_else(|| "bu_i64(0)".to_string())
+        }
+    }
+}
+
+/// Atom emitter for generic C functions — wraps literals as BuVal.
+fn emit_atom_c_generic(atom: &Atom, tp: &[String]) -> String {
+    match atom {
+        Atom::Integer(n)  => format!("bu_i64({})", n),
+        Atom::Float(n)    => format!("bu_f64({})", n),
+        Atom::StringLit(s) => format!("bu_str(\"{}\")", s),
+        Atom::Ident(s)    => s.clone(), // already BuVal if it was a type-param param
+        Atom::Unary { op, rhs } => {
+            let r = emit_atom_c_generic(rhs, tp);
+            if op == "-" { format!("bu_val_neg({})", r) }
+            else         { format!("bu_val_not({})", r) }
+        }
+        Atom::EnumVariant { variant, .. } => format!("bu_i64({})", variant),
+        // For non-generic atoms, fall back to the regular C emitter.
+        other => emit_atom_c(other),
+    }
 }
 
 fn emit_main_function_c(func: &Bullet) -> String {
@@ -434,9 +540,10 @@ fn translate_c_generic(s: &str) -> String {
     if s.starts_with("Fn[") {
         return "void*  /* fn ptr */".to_string();
     }
-    // Bare type parameter (e.g. T, K, V, E) — no known C equivalent
+    // Bare type parameter (e.g. T, K, V, E) in a non-generic context — shouldn't
+    // normally occur; pass through with a comment.
     if s.chars().all(|c| c.is_alphabetic()) && s.len() <= 2 {
-        return "void*  /* generic type param */".to_string();
+        return "BuVal  /* generic type param */".to_string();
     }
     // Unknown: pass through
     format!("{}  /* ? */", s)
