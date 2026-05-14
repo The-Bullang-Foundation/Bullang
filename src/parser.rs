@@ -444,6 +444,28 @@ fn parse_atom(pair: Pair<Rule>) -> Atom {
             let args = parts.map(parse_expr).collect();
             Atom::BuiltinExpr { name, args }
         }
+        Rule::closure => {
+            let mut parts = inner.into_inner();
+            let mut params = Vec::new();
+            // Consume closure_param pairs until we hit the return type (ty rule)
+            // then the body expr. We peek at the rule to distinguish.
+            let mut next = parts.next();
+            while let Some(ref p) = next {
+                if p.as_rule() == Rule::closure_param {
+                    let mut ci = p.clone().into_inner();
+                    let name = ci.next().unwrap().as_str().to_string();
+                    let ty   = parse_ty(ci.next().unwrap());
+                    params.push(crate::ast::ClosureParam { name, ty });
+                    next = parts.next();
+                } else {
+                    break;
+                }
+            }
+            // next is now the return ty
+            let ret  = parse_ty(next.unwrap());
+            let body = parse_expr(parts.next().unwrap());
+            Atom::Closure { params, ret, body: Box::new(body) }
+        }
         Rule::call => {
             let mut ci = inner.into_inner();
             let name   = ci.next().unwrap().as_str().to_string();
@@ -528,6 +550,9 @@ fn parse_call_arg(pair: Pair<Rule>) -> CallArg {
         Rule::field_access => CallArg::Value(inner.as_str().to_string()),
         Rule::index_expr   => CallArg::Value(inner.as_str().to_string()),
         Rule::slice_expr   => CallArg::Value(inner.as_str().to_string()),
+        // Closures as call args are parsed fully; store raw text for now
+        // (the AST node is used; CallArg::Value carries the source text).
+        Rule::closure      => CallArg::Value(inner.as_str().to_string()),
         other => unreachable!("unexpected call_arg: {:?}", other),
     }
 }

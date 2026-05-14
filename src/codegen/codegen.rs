@@ -423,6 +423,13 @@ fn emit_atom(atom: &Atom) -> String {
             format!("{}.chars().skip({}).take(({}) - ({})).collect::<String>()",
                 base, emit_expr(from), emit_expr(to), emit_expr(from)),
         Atom::EnumVariant { ty, variant } => format!("{}::{}", ty, variant),
+        Atom::Closure { params, ret, body } => {
+            let ps = params.iter()
+                .map(|p| format!("{}: {}", p.name, bu_type_to_rust(&p.ty)))
+                .collect::<Vec<_>>().join(", ");
+            let ret_str = bu_type_to_rust(ret);
+            format!("|{}| -> {} {{ {} }}", ps, ret_str, emit_expr(body))
+        }
     }
 }
 

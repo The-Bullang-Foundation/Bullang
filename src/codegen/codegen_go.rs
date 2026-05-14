@@ -446,6 +446,14 @@ fn emit_atom_go(atom: &Atom) -> String {
             format!("string([]rune({})[{}:{}])", base, emit_expr_go(from), emit_expr_go(to)),
         // Go enum constants are package-level — emit bare name
         Atom::EnumVariant { variant, .. } => variant.clone(),
+        Atom::Closure { params, ret, body } => {
+            let ps = params.iter()
+                .map(|p| format!("{} {}", p.name, bu_type_to_go(&p.ty)))
+                .collect::<Vec<_>>().join(", ");
+            let ret_str  = bu_type_to_go(ret);
+            let body_str = emit_expr_go(body);
+            format!("func({}) {} {{ return {} }}", ps, ret_str, body_str)
+        }
     }
 }
 /// `"Hello {name}!"` → `("Hello %v!", ["name"])`

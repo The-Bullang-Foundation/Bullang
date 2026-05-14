@@ -209,6 +209,15 @@ fn emit_atom_cpp(atom: &Atom) -> String {
     match atom {
         // C++ enum class: Direction::North (scoped)
         Atom::EnumVariant { ty, variant } => format!("{}::{}", ty, variant),
+        // C++ closure: immediately-returned lambda
+        Atom::Closure { params, ret, body } => {
+            let ps = params.iter()
+                .map(|p| format!("{} {}", bu_type_to_cpp(&p.ty), p.name))
+                .collect::<Vec<_>>().join(", ");
+            let ret_str  = bu_type_to_cpp(ret);
+            let body_str = emit_expr_cpp(body);
+            format!("[&]({}) -> {} {{ return {}; }}", ps, ret_str, body_str)
+        }
         // Everything else: delegate to C emitter
         other => codegen_c::emit_atom_c(other),
     }

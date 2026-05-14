@@ -201,6 +201,14 @@ pub enum Atom {
     /// Enum variant access: `Direction.North`
     /// Produced by the lowering pass from FieldAccess when the base is a known enum.
     EnumVariant { ty: String, variant: String },
+    /// Inline anonymous function: `|a: i32, b: i32| -> i32 { a + b }`
+    Closure { params: Vec<ClosureParam>, ret: BuType, body: Box<Expr> },
+}
+
+#[derive(Debug, Clone)]
+pub struct ClosureParam {
+    pub name: String,
+    pub ty:   BuType,
 }
 
 #[derive(Debug, Clone)]
@@ -373,6 +381,7 @@ fn lower_atom(atom: &mut Atom, env: &EnumEnv) {
         Atom::Index { idx, .. }         => lower_expr(idx, env),
         Atom::Slice { from, to, .. }    => { lower_expr(from, env); lower_expr(to, env); }
         Atom::BuiltinExpr { args, .. }  => { for a in args { lower_expr(a, env); } }
+        Atom::Closure { body, .. }      => lower_expr(body, env),
         // Call args are strings — no AST nodes to lower.
         // FieldAccess with 2+ fields, Ident, Literal, EnumVariant: no-op.
         _ => {}

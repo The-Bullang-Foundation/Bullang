@@ -290,6 +290,24 @@ fn emit_atom_c_generic(atom: &Atom, tp: &[String]) -> String {
             else         { format!("bu_val_not({})", r) }
         }
         Atom::EnumVariant { variant, .. } => format!("bu_i64({})", variant),
+        Atom::Closure { params, ret, body } => {
+            static COUNTER: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(0);
+            let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let ps_decl = params.iter()
+                .map(|p| format!("{} {}", bu_type_to_c(&p.ty), p.name))
+                .collect::<Vec<_>>().join(", ");
+            let ret_str  = bu_type_to_c(ret);
+            let body_str = emit_expr_c_generic(body, tp);
+            format!(
+                "__extension__ ({{ {ret} __bu_closure_{n}({ps}) {{ return {body}; }} \
+                 &__bu_closure_{n}; }})",
+                ret  = ret_str,
+                n    = n,
+                ps   = ps_decl,
+                body = body_str,
+            )
+        }
         // For non-generic atoms, fall back to the regular C emitter.
         other => emit_atom_c(other),
     }
@@ -443,6 +461,26 @@ pub fn emit_atom_c(atom: &Atom) -> String {
                 base, emit_expr_c(from), emit_expr_c(to)),
         // C typedef enum: variants are in global scope — emit bare variant name
         Atom::EnumVariant { variant, .. } => variant.clone(),
+        // C closures via GCC compound statement with nested function.
+        // The nested function is named __bu_closure_N (unique per call site).
+        Atom::Closure { params, ret, body } => {
+            static COUNTER: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(0);
+            let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let ps_decl = params.iter()
+                .map(|p| format!("{} {}", bu_type_to_c(&p.ty), p.name))
+                .collect::<Vec<_>>().join(", ");
+            let ret_str  = bu_type_to_c(ret);
+            let body_str = emit_expr_c(body);
+            format!(
+                "__extension__ ({{ {ret} __bu_closure_{n}({ps}) {{ return {body}; }} \
+                 &__bu_closure_{n}; }})",
+                ret  = ret_str,
+                n    = n,
+                ps   = ps_decl,
+                body = body_str,
+            )
+        }
     }
 }
 /// `"Hello {name}!"` → `("Hello %s!", ["name"])`

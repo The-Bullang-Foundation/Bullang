@@ -534,6 +534,17 @@ fn infer_atom(
             }
             string_ty
         }
+
+        Atom::Closure { params, ret, .. } => {
+            // Construct a Fn[T, U -> V] type matching existing representation.
+            let param_tys = params.iter().map(|p| p.ty.to_rust()).collect::<Vec<_>>().join(", ");
+            let fn_str = if params.is_empty() {
+                format!("Fn[-> {}]", ret.to_rust())
+            } else {
+                format!("Fn[{} -> {}]", param_tys, ret.to_rust())
+            };
+            BuType::Named(fn_str)
+        }
     }
 }
 

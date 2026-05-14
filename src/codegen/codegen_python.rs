@@ -286,6 +286,12 @@ fn emit_atom_py(atom: &Atom) -> String {
         Atom::Slice { base, from, to } =>
             format!("{}[{}:{}]", base, emit_expr_py(from), emit_expr_py(to)),
         Atom::EnumVariant { ty, variant } => format!("{}.{}", ty, variant),
+        Atom::Closure { params, body, .. } => {
+            let ps = params.iter()
+                .map(|p| py_param_name(&p.name).to_string())
+                .collect::<Vec<_>>().join(", ");
+            format!("lambda {}: {}", ps, emit_expr_py(body))
+        }
     }
 }
 

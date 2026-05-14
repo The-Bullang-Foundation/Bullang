@@ -38,7 +38,7 @@ string_lit = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 
 // ── Call arguments ────────────────────────────────────────────────────────────
 bullet_ref = { "&" ~ ident }
-call_arg   = { bullet_ref | float | integer | string_lit | slice_expr | index_expr | field_access | ident }
+call_arg   = { bullet_ref | closure | float | integer | string_lit | slice_expr | index_expr | field_access | ident }
 
 // ── Expressions ───────────────────────────────────────────────────────────────
 op           = { "&&" | "||" | "+" | "-" | "*" | "/" | "%" | "==" | "!=" | "<=" | ">=" | "<" | ">" }
@@ -54,6 +54,8 @@ index_expr   = { ident ~ "[" ~ expr ~ "]" }
 // Distinct from `builtin_call` (whole function body, no argument list).
 // Must be tried before `call` because "builtin" is a valid ident.
 builtin_expr = { "builtin" ~ "::" ~ ident ~ "(" ~ (expr ~ ("," ~ expr)*)? ~ ")" }
+closure_param = { ident ~ ":" ~ ty }
+closure       = { "|" ~ (closure_param ~ ("," ~ closure_param)*)? ~ "|" ~ "->" ~ ty ~ "{" ~ expr ~ "}" }
 call         = { ident ~ "(" ~ call_arg ~ ("," ~ call_arg)* ~ ")" }
 // Order: builtin_expr before call (both start with ident ~ "(", but
 //        builtin_expr has "::" in between so they don't actually conflict;
@@ -61,7 +63,7 @@ call         = { ident ~ "(" ~ call_arg ~ ("," ~ call_arg)* ~ ")" }
 // slice before index (same prefix, slice needs ".." lookahead).
 // field_access before ident ("foo.bar" must not match as just "foo").
 // unary_expr last ("-5" matches integer's built-in "-"? prefix first).
-atom         = { builtin_expr | call | float | integer | string_lit | slice_expr | index_expr | field_access | ident | unary_expr }
+atom         = { builtin_expr | closure | call | float | integer | string_lit | slice_expr | index_expr | field_access | ident | unary_expr }
 expr         = { atom ~ (op ~ atom)* }
 tuple_expr = { "(" ~ expr ~ ("," ~ expr)+ ~ ")" }
 pipe_val   = { tuple_expr | expr }

@@ -193,6 +193,12 @@ fn format_atom(atom: &Atom) -> String {
             format!("builtin::{}({})", name, args_str)
         }
         Atom::EnumVariant { ty, variant } => format!("{}.{}", ty, variant),
+        Atom::Closure { params, ret, body } => {
+            let ps = params.iter()
+                .map(|p| format!("{}: {}", p.name, format_type(&p.ty)))
+                .collect::<Vec<_>>().join(", ");
+            format!("|{}| -> {} {{ {} }}", ps, format_type(ret), format_expr(body))
+        }
     }
 }
 
