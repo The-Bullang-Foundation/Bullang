@@ -141,7 +141,15 @@ bullang update --experimental pull and rebuild from the experimental branch
 pub enum BlueprintNode {
     /// A sub-folder. `lang` is `Some("py")` etc. when written as `python: folder_name {`
     Folder { name: String, lang: Option<String>, children: Vec<BlueprintNode> },
-    Entry  { file: String, functions: Vec<String> },
+    /// A source file entry. `file` is the stem (no `.bu`).
+    /// `goal` is written as a comment at the top of the generated stub file.
+    /// `owner` is collected into `work_division.md` if present.
+    Entry  {
+        file:      String,
+        functions: Vec<String>,
+        goal:      Option<String>,
+        owner:     Option<String>,
+    },
 }
 
 // ── Parser ────────────────────────────────────────────────────────────────────
@@ -183,6 +191,10 @@ fn parse_block(
 
         if indent < base_indent { break; }
 
+        // Bare closing brace — folder closer written by the user; skip gracefully.
+        // Folder nesting is tracked by indentation, not braces, so this is decorative.
+        if trimmed == "}" { i += 1; continue; }
+
         if indent > base_indent {
             return Err(format!(
                 "line {}: unexpected indentation (expected {} spaces, got {}): '{}'",
@@ -190,12 +202,31 @@ fn parse_block(
             ));
         }
 
-        if trimmed.ends_with('{') || trimmed.ends_with(": {") || {
-            // Folder line: either "name {" or "lang: name {" or "name:"
-            trimmed.ends_with('{') || trimmed.ends_with(':')
-        } {
-            // Detect language prefix: "python: folder_name" or just "folder_name"
-            // A folder line ends with `{` (block open) or `:` (old indentation style)
+        // Entry lines contain `.bu` immediately followed by whitespace + `:`.
+        // This distinguishes them from folder lines even when both end with `{`.
+        if is_entry_line(trimmed) {
+            let entry_line_no = i + 1; // 1-based, for error messages
+            let (file_stem, fns_str, has_meta) = parse_entry_header(trimmed, entry_line_no)?;
+
+            let functions: Vec<String> = fns_str
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            i += 1;
+
+            let (goal, owner, next) = if has_meta {
+                parse_metadata_block(lines, i, base_indent, unit, entry_line_no)?
+            } else {
+                (None, None, i)
+            };
+
+            nodes.push(BlueprintNode::Entry { file: file_stem, functions, goal, owner });
+            i = next;
+
+        } else if trimmed.ends_with('{') || trimmed.ends_with(':') {
+            // Folder line: `folder_name {` or `lang: folder_name {`
             let (lang, folder_name) = parse_folder_header(trimmed);
             if folder_name.is_empty() {
                 return Err(format!("line {}: empty folder name", i + 1));
@@ -204,31 +235,118 @@ fn parse_block(
             let (children, next) = parse_block(lines, i, base_indent + unit, unit)?;
             nodes.push(BlueprintNode::Folder { name: folder_name, lang, children });
             i = next;
+
         } else {
-            let entry = trimmed.trim_end_matches(';');
-            if let Some(colon) = entry.find(':') {
-                let file = entry[..colon].trim().to_string();
-                let fns_str = entry[colon+1..].trim();
-                let functions: Vec<String> = fns_str
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                if file.is_empty() {
-                    return Err(format!("line {}: empty file name in entry", i + 1));
-                }
-                nodes.push(BlueprintNode::Entry { file, functions });
-            } else {
-                return Err(format!(
-                    "line {}: expected 'folder:' or 'filename: fn1, fn2' — got '{}'",
-                    i + 1, trimmed
-                ));
-            }
-            i += 1;
+            return Err(format!(
+                "line {}: expected a folder ('name {{') or a file entry ('name.bu : fn1, fn2') — got '{}'",
+                i + 1, trimmed
+            ));
         }
     }
 
     Ok((nodes, i))
+}
+
+/// True when `trimmed` is a file-entry line: contains `.bu` immediately
+/// followed (after optional whitespace) by `:`.
+fn is_entry_line(trimmed: &str) -> bool {
+    if let Some(pos) = trimmed.find(".bu") {
+        trimmed[pos + 3..].trim_start().starts_with(':')
+    } else {
+        false
+    }
+}
+
+/// Parse the header of an entry line: `filename.bu : fn1, fn2[;|{]`
+///
+/// Returns `(file_stem, fns_str, has_metadata_block)`.
+/// Errors when the `.bu` extension is missing (caller already guarantees it
+/// is present, but this handles the inner extraction cleanly).
+fn parse_entry_header(trimmed: &str, line_no: usize) -> Result<(String, String, bool), String> {
+    let bu_pos = trimmed.find(".bu").ok_or_else(||
+        format!("line {}: file entries must end with the .bu extension", line_no)
+    )?;
+
+    let file_stem = trimmed[..bu_pos].trim().to_string();
+    if file_stem.is_empty() {
+        return Err(format!("line {}: empty file name in entry", line_no));
+    }
+
+    // Everything after `.bu`, starting with `:`
+    let after_bu = trimmed[bu_pos + 3..].trim_start();
+    if !after_bu.starts_with(':') {
+        return Err(format!("line {}: expected ':' after file name", line_no));
+    }
+    let rest = after_bu[1..].trim();
+
+    let has_meta = rest.ends_with('{');
+    let fns_str  = if has_meta {
+        rest.trim_end_matches('{').trim()
+    } else {
+        rest.trim_end_matches(';').trim()
+    };
+
+    Ok((file_stem, fns_str.to_string(), has_meta))
+}
+
+/// Parse a metadata block `{ goal: "...", owner: "..." }`.
+///
+/// `start` points to the first line after the entry header's opening `{`.
+/// `entry_indent` is the column of the entry line itself.
+/// Returns `(goal, owner, next_i)` where `next_i` is the index after the
+/// closing `}`.
+fn parse_metadata_block(
+    lines:        &[&str],
+    start:        usize,
+    entry_indent: usize,
+    unit:         usize,
+    entry_line:   usize,
+) -> Result<(Option<String>, Option<String>, usize), String> {
+    let mut goal  = None;
+    let mut owner = None;
+    let mut i     = start;
+    let field_indent = entry_indent + unit;
+
+    while i < lines.len() {
+        let line    = lines[i];
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() { i += 1; continue; }
+
+        let indent = line.len() - line.trim_start().len();
+
+        // Closing brace at the same indent as the entry line
+        if trimmed == "}" && indent == entry_indent {
+            return Ok((goal, owner, i + 1));
+        }
+
+        if indent == field_indent {
+            if let Some(val) = parse_quoted_field(trimmed, "goal") {
+                goal = Some(val);
+            } else if let Some(val) = parse_quoted_field(trimmed, "owner") {
+                owner = Some(val);
+            }
+            // Unknown metadata fields are silently ignored for forward compatibility
+        }
+
+        i += 1;
+    }
+
+    Err(format!(
+        "line {}: metadata block opened here was never closed with '}}'",
+        entry_line
+    ))
+}
+
+/// Extract the value from a `key : "value"` or `key: "value"` field line.
+/// Quotes are stripped. Returns `None` if the key doesn't match or the
+/// value is empty.
+fn parse_quoted_field(trimmed: &str, key: &str) -> Option<String> {
+    if !trimmed.to_lowercase().starts_with(key) { return None; }
+    let rest = trimmed[key.len()..].trim_start();
+    if !rest.starts_with(':') { return None; }
+    let val = rest[1..].trim().trim_matches('"');
+    if val.is_empty() { None } else { Some(val.to_string()) }
 }
 
 /// Parse a folder header line into (Option<lang_ext>, folder_name).
@@ -296,6 +414,8 @@ pub fn init_from_blueprint(
         .map_err(|e| format!("Could not create '{}': {}", root.display(), e))?;
 
     let mut files_created: Vec<PathBuf> = Vec::new();
+    // (owner_name, relative_path_from_root) accumulated across the whole tree
+    let mut owners: Vec<(String, String)> = Vec::new();
 
     let max_depth = tree_depth(nodes);
     let root_rank = rank_for_depth(max_depth as u8)
@@ -312,27 +432,48 @@ pub fn init_from_blueprint(
     if !root_entries.is_empty() {
         root_inv.push('\n');
         for e in root_entries {
-            if let BlueprintNode::Entry { file, functions } = e {
+            if let BlueprintNode::Entry { file, functions, .. } = e {
                 root_inv.push_str(&format!("{}: {};\n", file, functions.join(", ")));
             }
         }
     }
     write_file(&root.join("inventory.bu"), &root_inv, &mut files_created)?;
 
+    // Create stub .bu files for root-level entries
+    for e in nodes.iter().filter(|n| matches!(n, BlueprintNode::Entry { .. })) {
+        if let BlueprintNode::Entry { file, goal, owner, .. } = e {
+            let stub = goal.as_deref()
+                .map(|g| format!("// {}\n", g))
+                .unwrap_or_default();
+            write_file(&root.join(format!("{}.bu", file)), &stub, &mut files_created)?;
+            if let Some(o) = owner {
+                owners.push((o.clone(), format!("{}.bu", file)));
+            }
+        }
+    }
+
     let child_folders: Vec<&BlueprintNode> = nodes.iter()
         .filter(|n| matches!(n, BlueprintNode::Folder { .. }))
         .collect();
     for node in child_folders {
         if let BlueprintNode::Folder { name: folder_name, lang: folder_lang, children } = node {
-            // Folder lang overrides the blueprint-level lang; if neither set, None
             let effective_lang = folder_lang.as_deref().or(lang);
-            emit_blueprint_folder(&root, folder_name, children, max_depth - 1, effective_lang, &mut files_created)?;
+            emit_blueprint_folder(
+                &root, folder_name, children, max_depth - 1,
+                effective_lang, &mut files_created, &mut owners, folder_name,
+            )?;
         }
     }
 
     // Copy blueprint source and write README
     write_file(&root.join("blueprint.bu"), blueprint_src, &mut files_created)?;
     write_file(&root.join("README.md"), BULLANG_README, &mut files_created)?;
+
+    // Generate work_division.md if any owners were declared
+    if !owners.is_empty() {
+        let md = generate_work_division_md(&owners);
+        write_file(&root.join("work_division.md"), &md, &mut files_created)?;
+    }
 
     Ok(BlueprintResult { root, files_created })
 }
@@ -344,6 +485,8 @@ fn emit_blueprint_folder(
     depth_remaining: usize,
     inherited_lang:  Option<&str>,
     created:         &mut Vec<PathBuf>,
+    owners:          &mut Vec<(String, String)>,
+    rel_path:        &str,
 ) -> Result<(), String> {
     let dir = parent.join(name);
     fs::create_dir_all(&dir)
@@ -363,22 +506,60 @@ fn emit_blueprint_folder(
     if !entries.is_empty() {
         inv.push('\n');
         for e in entries {
-            if let BlueprintNode::Entry { file, functions } = e {
+            if let BlueprintNode::Entry { file, functions, .. } = e {
                 inv.push_str(&format!("{}: {};\n", file, functions.join(", ")));
             }
         }
     }
     write_file(&dir.join("inventory.bu"), &inv, created)?;
 
+    // Create a stub .bu file for every entry in this folder
+    for e in children.iter().filter(|n| matches!(n, BlueprintNode::Entry { .. })) {
+        if let BlueprintNode::Entry { file, goal, owner, .. } = e {
+            let stub = goal.as_deref()
+                .map(|g| format!("// {}\n", g))
+                .unwrap_or_default();
+            write_file(&dir.join(format!("{}.bu", file)), &stub, created)?;
+            if let Some(o) = owner {
+                owners.push((o.clone(), format!("{}/{}.bu", rel_path, file)));
+            }
+        }
+    }
+
     for child in children {
         if let BlueprintNode::Folder { name: child_name, lang: child_lang, children: grandchildren } = child {
-            // Child's explicit lang overrides the inherited one; propagates further down
             let effective = child_lang.as_deref().or(inherited_lang);
-            emit_blueprint_folder(&dir, child_name, grandchildren, depth_remaining - 1, effective, created)?;
+            let child_rel = format!("{}/{}", rel_path, child_name);
+            emit_blueprint_folder(
+                &dir, child_name, grandchildren, depth_remaining - 1,
+                effective, created, owners, &child_rel,
+            )?;
         }
     }
 
     Ok(())
+}
+
+// ── Work division ─────────────────────────────────────────────────────────────
+
+/// Generate the content of `work_division.md`, grouping files by owner.
+fn generate_work_division_md(owners: &[(String, String)]) -> String {
+    use std::collections::BTreeMap;
+
+    let mut by_owner: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for (owner, path) in owners {
+        by_owner.entry(owner.as_str()).or_default().push(path.as_str());
+    }
+
+    let mut md = String::from("# Work Division\n\n");
+    for (owner, files) in &by_owner {
+        md.push_str(&format!("## {}\n\n", owner));
+        for f in files {
+            md.push_str(&format!("- {}\n", f));
+        }
+        md.push('\n');
+    }
+    md
 }
 
 fn tree_depth(nodes: &[BlueprintNode]) -> usize {
@@ -409,9 +590,12 @@ pub fn print_blueprint_tree(result: &BlueprintResult) {
             println!("  {}{}/", "  ".repeat(depth - 1), folder);
         }
         let label = match file_name {
-            "inventory.bu" => format!("{} (inventory)", file_name),
-            "blueprint.bu" => format!("{} (blueprint — copied)", file_name),
-            _              => file_name.to_string(),
+            "inventory.bu"     => format!("{} (inventory)", file_name),
+            "blueprint.bu"     => format!("{} (blueprint — copied)", file_name),
+            "work_division.md" => format!("{} (work division)", file_name),
+            "README.md"        => file_name.to_string(),
+            other if other.ends_with(".bu") => format!("{} (stub)", other),
+            _                  => file_name.to_string(),
         };
         println!("  {}  {}", indent, label);
     }

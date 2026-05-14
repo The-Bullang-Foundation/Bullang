@@ -40,11 +40,27 @@ pub fn cmd_prod(folder: PathBuf) {
         }
     }
 
-    println!();
-    if removed == 0 {
-        println!("no test_ folders found.");
+    // Remove work_division.md if present at the root
+    let wd_path = root.join("work_division.md");
+    let removed_wd = if wd_path.exists() {
+        match fs::remove_file(&wd_path) {
+            Ok(_)  => { println!("  removed  {}", wd_path.display()); true }
+            Err(e) => { eprintln!("warning: could not remove 'work_division.md': {}", e); false }
+        }
     } else {
-        println!("{} test_ folder(s) removed.", removed);
+        false
+    };
+
+    println!();
+    if removed == 0 && !removed_wd {
+        println!("nothing to remove.");
+    } else {
+        if removed > 0 {
+            println!("{} test_ folder(s) removed.", removed);
+        }
+        if removed_wd {
+            println!("work_division.md removed.");
+        }
     }
 }
 
