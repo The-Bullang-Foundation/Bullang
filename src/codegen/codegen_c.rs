@@ -11,8 +11,15 @@ use crate::ast::*;
 pub fn emit_source_c(file: &SourceFile, header_name: &str) -> String {
     let mut out = String::new();
     out.push_str(&format!("#include \"{}\"\n", header_name));
-    out.push_str("#include <stdlib.h>\n");
-    out.push_str("#include <string.h>\n\n");
+    if needs_stdlib(file) {
+        out.push_str("#include <stdlib.h>\n");
+    }
+    if needs_string_h(file) {
+        out.push_str("#include <string.h>\n");
+    }
+    if out.ends_with('\n') && !out.ends_with("\n\n") {
+        out.push('\n');
+    }
 
     for func in &file.bullets {
         out.push_str(&emit_function_c(func));
@@ -57,6 +64,81 @@ pub fn needs_generic_types(file: &SourceFile) -> bool {
     file.bullets.iter().any(|b| !b.type_params.is_empty())
 }
 
+/// `<stdbool.h>` — needed when `bool` appears anywhere in the public API.
+pub fn needs_stdbool(file: &SourceFile) -> bool {
+    file.bullets.iter().any(|b| {
+        type_is_bool(&b.output.ty) || b.params.iter().any(|p| type_is_bool(&p.ty))
+    })
+}
+
+fn type_is_bool(ty: &BuType) -> bool {
+    match ty {
+        BuType::Named(s)    => s == "bool",
+        BuType::Array(t, _) => type_is_bool(t),
+        BuType::Tuple(ts)   => ts.iter().any(type_is_bool),
+        BuType::Unknown     => false,
+    }
+}
+
+/// `<stdlib.h>` — needed when native blocks reference `malloc`, `free`, `calloc`,
+/// `realloc`, or `exit`, or when `Option[T]` types appear (nullable pointer idiom).
+pub fn needs_stdlib(file: &SourceFile) -> bool {
+    const MARKERS: &[&str] = &["malloc", "calloc", "realloc", "free", "exit", "abort", "NULL"];
+    file.bullets.iter().any(|b| {
+        any_type_needs_stdlib(&b.output.ty)
+            || b.params.iter().any(|p| any_type_needs_stdlib(&p.ty))
+            || native_blocks_contain(b, MARKERS)
+    })
+}
+
+fn any_type_needs_stdlib(ty: &BuType) -> bool {
+    match ty {
+        BuType::Named(s) => s.starts_with("Option["),
+        BuType::Array(t, _) => any_type_needs_stdlib(t),
+        BuType::Tuple(ts)   => ts.iter().any(any_type_needs_stdlib),
+        BuType::Unknown     => false,
+    }
+}
+
+/// `<string.h>` — needed when any slice expression (`strndup`) or native block
+/// references string functions.
+pub fn needs_string_h(file: &SourceFile) -> bool {
+    const MARKERS: &[&str] = &["strndup", "strlen", "strcpy", "strcat", "strcmp",
+                                "strncpy", "memcpy", "memmove", "memset", "memcmp"];
+    file.bullets.iter().any(|b| {
+        body_has_slice(&b.body) || native_blocks_contain(b, MARKERS)
+    })
+}
+
+fn body_has_slice(body: &BulletBody) -> bool {
+    match body {
+        BulletBody::Pipes(pipes) => pipes.iter().any(|p| expr_has_slice(&p.expr)),
+        _ => false,
+    }
+}
+
+fn expr_has_slice(expr: &Expr) -> bool {
+    match expr {
+        Expr::Atom(a)      => atom_has_slice(a),
+        Expr::BinOp(b)     => atom_has_slice(&b.lhs) || atom_has_slice(&b.rhs),
+        Expr::Tuple(exprs) => exprs.iter().any(expr_has_slice),
+    }
+}
+
+fn atom_has_slice(atom: &Atom) -> bool {
+    matches!(atom, Atom::Slice { .. })
+}
+
+/// Returns true if any native block in `bullet` contains any of the given substrings.
+fn native_blocks_contain(bullet: &Bullet, markers: &[&str]) -> bool {
+    match &bullet.body {
+        BulletBody::Natives(blocks) => blocks.iter().any(|b| {
+            markers.iter().any(|m| b.code.contains(m))
+        }),
+        _ => false,
+    }
+}
+
 fn type_needs_foreign(ty: &BuType) -> bool {
     match ty {
         BuType::Named(s) => s.starts_with("Vec[") || s.starts_with("HashMap["),
@@ -74,14 +156,16 @@ pub fn emit_header_c(
     enums:        &[crate::ast::EnumDef],
 ) -> String {
     let guard    = format!("{}_H", module_name.to_uppercase().replace('-', "_"));
-    let needs_ft  = source_files.iter().any(|(_, sf)| needs_foreign_types(sf));
-    let needs_gen = source_files.iter().any(|(_, sf)| needs_generic_types(sf));
-    let mut out   = String::new();
+    let needs_ft   = source_files.iter().any(|(_, sf)| needs_foreign_types(sf));
+    let needs_gen  = source_files.iter().any(|(_, sf)| needs_generic_types(sf));
+    let needs_bool = source_files.iter().any(|(_, sf)| needs_stdbool(sf));
+    let mut out    = String::new();
 
     out.push_str(&format!("#ifndef {}\n#define {}\n\n", guard, guard));
     out.push_str("#include <stdint.h>\n");
-    out.push_str("#include <stdbool.h>\n");
-    out.push_str("#include <stddef.h>\n");
+    if needs_bool {
+        out.push_str("#include <stdbool.h>\n");
+    }
     if needs_ft {
         out.push_str("#include \"foreign_types.h\"\n");
     }
@@ -123,8 +207,12 @@ pub fn emit_header_c(
 
 pub fn emit_main_c(file: &SourceFile, header_name: &str) -> String {
     let mut out = String::new();
+    // <stdio.h> is always included in main — assert expressions emit fprintf(stderr,...)
+    // and virtually every entry point does some I/O.
     out.push_str("#include <stdio.h>\n");
-    out.push_str("#include <stdlib.h>\n");
+    if needs_stdlib(file) {
+        out.push_str("#include <stdlib.h>\n");
+    }
     out.push_str(&format!("#include \"{}\"\n\n", header_name));
 
     for func in &file.bullets {
