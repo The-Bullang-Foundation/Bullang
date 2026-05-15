@@ -159,7 +159,7 @@ Rules:
 
 ## Types
 
-| Bullang type    | Rust           | Python          | Go (2)          | C               | C++                       |
+| Bullang type    | Rust           | Python          | Go              | C               | C++                       |
 |-----------------|----------------|-----------------|-----------------|-----------------|---------------------------|
 | `i32`, `i64`    | `i32`/`i64`    | `int`           | `int32`/`int64` | `int32_t`       | `int32_t`                 |
 | `f64`           | `f64`          | `float`         | `float64`       | `double`        | `double`                  |
@@ -176,7 +176,7 @@ Rules:
 emitted automatically. `map_t` uses string keys only.
 
 (2) Go has no built-in tuple type. Bullang emits a named struct per unique
-Tuple combination into `types.go` -- e.g. `Tuple[i32, f64]` becomes
+tuple combination into `types.go` — e.g. `Tuple[i32, f64]` becomes
 `Tuple_i32_f64` with fields `V0 int32` and `V1 float64`.
 
 ---
@@ -274,33 +274,16 @@ let absolute(x: i32) -> result: i32 {
 }
 ```
 
-| Category | Builtins                                                                                    |
-|----------|---------------------------------------------------------------------------------------------|
-| Math     | `abs` `pow` `powf` `sqrt` `clamp`                                                           |
-| String   | `to_upper` `to_lower` `trim` `starts_with` `ends_with` `replace_str` `to_string` `parse_i64`|
+| Category   | Builtins                                                                                       |
+|------------|------------------------------------------------------------------------------------------------|
+| Math       | `abs` `pow` `powf` `sqrt` `clamp` `min` `max` `log` `exp`                                     |
+| Conditions | `tern`                                                                                         |
+| String     | `to_upper` `to_lower` `trim` `starts_with` `ends_with` `replace_str` `to_string` `parse_i64` `len` |
+| Algorithms | `swap` `insertion_sort` `quick_sort` `merge_sort` `radix_sort`                                 |
+| I/O        | `in` `out` `open` `close` `time`                                                               |
+| System     | `args` `exit` `env` `sleep`                                                                    |
 
-Run `bullang stdlib` for full signatures and parameter counts.
-
----
-
-## Test functions
-
-Annotate with `#test` to register a function as a test. Test functions take
-no parameters and return `bool`. They are never included in `bullang convert`
-output.
-
-```
-#test
-let test_add() -> result: bool {
-    () : 2.0 + 3.0 -> {sum};
-    (sum) : sum == 5.0 -> {result};
-}
-```
-
-```sh
-bullang test
-bullang test -e py
-```
+Run `bullang stdlib --list` for full signatures and descriptions.
 
 ---
 
@@ -311,11 +294,11 @@ language per folder in the blueprint using a language prefix:
 
 ```
 war my_project {
-    rust: engine {
-        battle_engine {}
+    theater engine {
+        battle core {}
     }
-    python: pipeline {
-        battle_pipeline {}
+    python: theater pipeline {
+        battle data {}
     }
 }
 ```
@@ -342,33 +325,33 @@ bullang check            # validate + type-check + report formatting drift
 ```
 
 Canonical rules: 4-space pipe indentation, colon-aligned struct fields,
-directives in order (#rank -> #lang -> #lib), one blank line between
+directives in order (#rank → #lang → #lib), one blank line between
 functions. Escape block contents are never reformatted.
 
 ---
 
 ## CLI reference
 
-| Command                                | What it does                                             |
-|----------------------------------------|----------------------------------------------------------|
-| `bullang init <name>`                  | Scaffold a new project (depth 2 by default)              |
-| `bullang init <name> --depth N`        | Scaffold with a custom hierarchy depth (1-6)             |
-| `bullang init <name> --lang <ext>`     | Set the target language at init time                     |
-| `bullang init <name> --blueprint f.bu` | Init from a blueprint file                               |
-| `bullang convert <folder>`             | Transpile (reads #lang, or per-folder in multi-lang)     |
-| `bullang convert <folder> -e rs`       | Override target language (single-language projects only) |
-| `bullang convert file.bu`              | Transpile a single file to stdout                        |
-| `bullang test`                         | Run all #test functions                                  |
-| `bullang test -e py`                   | Run tests against a specific backend                     |
-| `bullang check`                        | Validate, type-check, and verify formatting              |
-| `bullang fmt`                          | Format all .bu files to canonical style                  |
-| `bullang fmt --dry-run`                | Show what would change without writing                   |
-| `bullang stdlib`                       | List all builtin functions                               |
-| `bullang lsp`                          | Start the LSP server                                     |
-| `bullang editor-setup`                 | Write LSP config for Neovim / Helix / Emacs              |
-| `bullang update`                       | Pull and reinstall from main branch                      |
-| `bullang update --experimental`        | Pull and reinstall from experimental branch              |
-| `bullang install`                      | Install bullang to ~/.cargo/bin                          |
+| Command                                     | What it does                                             |
+|---------------------------------------------|----------------------------------------------------------|
+| `bullang init <name>`                       | Scaffold a new project (depth 2 by default)              |
+| `bullang init <name> --depth N`             | Scaffold with a custom hierarchy depth (1–6)             |
+| `bullang init <name> --lang <ext>`          | Set the target language at init time                     |
+| `bullang init <name> --blueprint <file>`    | Init from a blueprint file                               |
+| `bullang convert <folder>`                  | Transpile (reads #lang from inventory, default: rs)      |
+| `bullang convert <folder> -e rs`            | Override target language                                 |
+| `bullang convert file.bu`                   | Transpile a single file — output written next to source  |
+| `bullang convert file.bu -o out.rs`         | Transpile a single file to an explicit path              |
+| `bullang prod <folder>`                     | Strip test_ folders and work_division.md for production  |
+| `bullang fmt`                               | Format all .bu files to canonical style                  |
+| `bullang fmt --dry-run`                     | Show what would change without writing                   |
+| `bullang check`                             | Validate, type-check, and verify formatting              |
+| `bullang stdlib --list`                     | List all builtin functions with signatures               |
+| `bullang update`                            | Pull and reinstall from main branch                      |
+| `bullang update --experimental`             | Pull and reinstall from experimental branch              |
+| `bullang lsp`                               | Start the LSP server                                     |
+| `bullang editor-setup`                      | Write LSP config for Neovim / Helix / Emacs              |
+| `bullang install`                           | Install bullang to system PATH                           |
 
 ---
 
@@ -382,24 +365,22 @@ bullang init my_project --depth 3 --lang rs
 
 # 3. Write function bodies in .bu source files
 
-# 4. Test while developing
-bullang test
-
-# 5. Validate and check formatting
+# 4. Validate and check formatting
 bullang check
 
-# 6. Format if needed
+# 5. Format if needed
 bullang fmt
 
-# 7. Convert -- this README is deleted automatically
+# 6. Convert — this README is deleted automatically
 bullang convert my_project
 
-# 8. Compile or run
+# 7. Compile or run
 cd _my_project && cargo build
 ```
 
 ---
 
 *Source: https://github.com/My-sidequests/Bullang*
+
 "#
 }
