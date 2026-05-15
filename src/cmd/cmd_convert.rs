@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use crate::ast::{self, Backend};
 use crate::validator::{self, AllErrors};
 use crate::{build, codegen, parser, typecheck};
-use crate::utils::{current_dir, read_file, write_or_print, find_root_from, find_root_from_probe, print_all_errors, print_type_errors};
+use crate::utils::{current_dir, read_file, find_root_from, find_root_from_probe, print_all_errors, print_type_errors};
 use crate::readme::delete_project_readme;
 
 // ── Project / single-file dispatch ────────────────────────────────────────────
@@ -200,6 +200,19 @@ pub fn cmd_convert_file(input: PathBuf, ext: String, output: Option<PathBuf>) {
 
     let backend = Backend::from_ext(&ext).unwrap_or(Backend::Rust);
 
+    // Derive output path: same directory as the input file, stem unchanged,
+    // extension replaced with the target language extension.
+    // If the user passed -o explicitly, honour that instead.
+    let stem = input.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
+    let out_dir = input.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+    let derive_output = |target_ext: &str| -> PathBuf {
+        match &output {
+            Some(p) => p.clone(),
+            None    => out_dir.join(format!("{}.{}", stem, target_ext)),
+        }
+    };
+
     match bu {
         ast::BuFile::Source(ref sf) => {
             use std::collections::HashSet;
@@ -217,27 +230,89 @@ pub fn cmd_convert_file(input: PathBuf, ext: String, output: Option<PathBuf>) {
                 print_type_errors(&type_errors);
                 std::process::exit(1);
             }
-            let content = match backend {
-                Backend::Rust       => codegen::emit_source(sf),
-                Backend::Python     => codegen::emit_source_py(sf),
-                Backend::C          => {
-                    let hdr = format!("{}.h", input.file_stem()
-                        .and_then(|s| s.to_str()).unwrap_or("out"));
-                    codegen::emit_source_c(sf, &hdr)
+
+            match backend {
+                Backend::Rust => {
+                    let out = derive_output("rs");
+                    let content = codegen::emit_source(sf);
+                    write_file_or_exit(&out, content);
                 }
-                Backend::Cpp        => {
-                    let hdr = format!("{}.hpp", input.file_stem()
-                        .and_then(|s| s.to_str()).unwrap_or("out"));
-                    codegen::emit_source_cpp(sf, &hdr)
+                Backend::Python => {
+                    let out = derive_output("py");
+                    let content = codegen::emit_source_py(sf);
+                    write_file_or_exit(&out, content);
                 }
-                Backend::Go         => codegen::emit_source_go(sf, "main"),
-                Backend::Unknown(_) => codegen::emit_source(sf),
-            };
-            write_or_print(content, output);
+                Backend::C => {
+                    let hdr_name = format!("{}.h", stem);
+                    let hdr_out  = out_dir.join(&hdr_name);
+                    let src_out  = derive_output("c");
+                    let content  = codegen::emit_source_c(sf, &hdr_name);
+                    // For C, also write the header alongside if no explicit -o
+                    if output.is_none() {
+                        let (hdr_content, src_content) = split_c_output(&content, &hdr_name);
+                        write_file_or_exit(&hdr_out, hdr_content);
+                        write_file_or_exit(&src_out, src_content);
+                    } else {
+                        write_file_or_exit(&src_out, content);
+                    }
+                }
+                Backend::Cpp => {
+                    let hdr_name = format!("{}.hpp", stem);
+                    let hdr_out  = out_dir.join(&hdr_name);
+                    let src_out  = derive_output("cpp");
+                    let content  = codegen::emit_source_cpp(sf, &hdr_name);
+                    if output.is_none() {
+                        let (hdr_content, src_content) = split_c_output(&content, &hdr_name);
+                        write_file_or_exit(&hdr_out, hdr_content);
+                        write_file_or_exit(&src_out, src_content);
+                    } else {
+                        write_file_or_exit(&src_out, content);
+                    }
+                }
+                Backend::Go => {
+                    let out = derive_output("go");
+                    let content = codegen::emit_source_go(sf, "main");
+                    write_file_or_exit(&out, content);
+                }
+                Backend::Unknown(_) => {
+                    let out = derive_output("rs");
+                    let content = codegen::emit_source(sf);
+                    write_file_or_exit(&out, content);
+                }
+            }
+
+            println!("wrote {}.{}", stem, ext);
         }
         ast::BuFile::Inventory(_) => {
-            write_or_print(codegen::emit_mod_rs(&[]), output);
+            let out = derive_output("rs");
+            write_file_or_exit(&out, codegen::emit_mod_rs(&[]));
+            println!("wrote {}", out.display());
         }
+    }
+}
+
+fn write_file_or_exit(path: &std::path::Path, content: String) {
+    std::fs::write(path, &content).unwrap_or_else(|e| {
+        eprintln!("error writing {}: {}", path.display(), e);
+        std::process::exit(1);
+    });
+}
+
+/// Split a combined C/C++ codegen output (header + source concatenated) into
+/// two separate strings.  The codegen emits the header block first, separated
+/// from the source block by a blank line.  If no clear split is found the
+/// whole content goes into the source file.
+fn split_c_output(content: &str, hdr_name: &str) -> (String, String) {
+    // The generated output starts with the header guard / #pragma once block.
+    // Look for the first occurrence of `#include "hdr_name"` which marks the
+    // beginning of the .c / .cpp section.
+    let marker = format!("#include \"{}\"", hdr_name);
+    if let Some(pos) = content.find(&marker) {
+        let hdr = content[..pos].trim_end().to_string() + "\n";
+        let src = content[pos..].to_string();
+        (hdr, src)
+    } else {
+        (String::new(), content.to_string())
     }
 }
 

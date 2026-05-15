@@ -356,39 +356,53 @@ fn parse_quoted_field(trimmed: &str, key: &str) -> Option<String> {
 ///   `rs: my_folder`       → (Some("rs"), "my_folder")
 ///   `my_folder`           → (None, "my_folder")
 ///
-/// The folder name part has any trailing `:` or `{` stripped.
+/// The folder name part has any trailing `:` or `{` stripped, and any
+/// leading rank keyword (`war`, `theater`, etc.) removed so users do not need
+/// to write ranks in blueprints — they are inferred from nesting depth.
 fn parse_folder_header(trimmed: &str) -> (Option<String>, String) {
-    // Strip trailing `:` or `{`
     let stripped = trimmed.trim_end_matches('{').trim().trim_end_matches(':').trim();
 
-    // Known language names (long form and short form)
     const LANGS: &[(&str, &str)] = &[
-        ("rust",   "rs"),
-        ("rs",     "rs"),
-        ("python", "py"),
-        ("py",     "py"),
-        ("c",      "c"),
-        ("cpp",    "cpp"),
-        ("c++",    "cpp"),
-        ("go",     "go"),
+        ("rust",   "rs"), ("rs",     "rs"),
+        ("python", "py"), ("py",     "py"),
+        ("c",      "c"),  ("cpp",    "cpp"),
+        ("c++",    "cpp"),("go",     "go"),
         ("golang", "go"),
     ];
 
-    // Check if it matches "lang: folder_name"
+    const RANKS: &[&str] = &[
+        "war", "theater", "battle", "strategy", "tactic", "skirmish",
+    ];
+
+    // "lang: [rank] folder_name" — e.g. "python: theater tools" or "python: tools"
     if let Some(colon) = stripped.find(':') {
         let prefix = stripped[..colon].trim().to_lowercase();
-        let rest   = stripped[colon+1..].trim().to_string();
+        let rest   = stripped[colon+1..].trim();
         if !rest.is_empty() {
             for (long, short) in LANGS {
                 if prefix == *long {
-                    return (Some(short.to_string()), rest);
+                    return (Some(short.to_string()), strip_rank_prefix(rest, RANKS));
                 }
             }
         }
     }
 
-    // No language prefix
-    (None, stripped.to_string())
+    // Plain folder line, possibly prefixed with a rank keyword
+    (None, strip_rank_prefix(stripped, RANKS))
+}
+
+/// Strip a leading rank keyword + whitespace from `s`, e.g. "war my_project" → "my_project".
+/// Returns `s` unchanged when no rank keyword is found.
+fn strip_rank_prefix(s: &str, ranks: &[&str]) -> String {
+    for rank in ranks {
+        if let Some(rest) = s.strip_prefix(rank) {
+            let rest = rest.trim_start();
+            if !rest.is_empty() {
+                return rest.to_string();
+            }
+        }
+    }
+    s.to_string()
 }
 
 // ── Blueprint → folder tree ───────────────────────────────────────────────────
