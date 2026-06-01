@@ -1,0 +1,130 @@
+// ── Whitespace & comments ─────────────────────────────────────────────────────
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT    = _{ "//" ~ (!"\n" ~ ANY)* }
+
+// ── Identifiers & literals ────────────────────────────────────────────────────
+ident      = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+float      = @{ "-"? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+integer    = @{ "-"? ~ ASCII_DIGIT+ }
+
+// ── Type system ───────────────────────────────────────────────────────────────
+// ty_unit = ()
+// ty_tuple  = Tuple[T, U]
+// ty_generic_args uses square brackets: Vec[T], Option[T], etc.
+// ty_fn = Fn[T, U -> V]  — params before ->, return type after; both optional
+// ty_array = [T; N]  (fixed-size, Rust passthrough)
+ty_unit         = { "(" ~ ")" }
+ty_tuple_args   = { ty ~ ("," ~ ty)+ }
+ty_tuple        = { "Tuple" ~ "[" ~ ty_tuple_args ~ "]" }
+ty_generic_args = { "[" ~ ty ~ ("," ~ ty)* ~ "]" }
+ty_atom         = { ident ~ ty_generic_args? }
+ty_array        = { "[" ~ ty ~ ";" ~ integer ~ "]" }
+// Fn[T, U -> V] — zero or more param types, optional arrow + return type
+ty_fn_params    = { ty ~ ("," ~ ty)* }
+ty_fn           = { "Fn" ~ "[" ~ (ty_fn_params ~ "->")? ~ ty? ~ "]" }
+// Reference types: &T and &mut T
+ty_ref_mut      = { "&" ~ "mut" ~ ty }
+ty_ref          = { "&" ~ ty }
+// ty_fn must be tried before ty_atom (both can start with "Fn"), ty_tuple before ty_atom
+ty              = { ty_unit | ty_tuple | ty_array | ty_fn | ty_ref_mut | ty_ref | ty_atom }
+
+// ── Binding  {name} ───────────────────────────────────────────────────────────
+binding = { "{" ~ ident? ~ "}" }
+
+// ── String literals ───────────────────────────────────────────────────────────
+// Stored verbatim (quotes included) by the @-atomic rule so escape sequences
+// and interpolation placeholders are preserved exactly as written.
+string_lit = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+
+// ── Call arguments ────────────────────────────────────────────────────────────
+bullet_ref = { "&" ~ ident }
+call_arg   = { bullet_ref | closure | float | integer | string_lit | slice_expr | index_expr | field_access | ident }
+
+// ── Expressions ───────────────────────────────────────────────────────────────
+op           = { "&&" | "||" | "+" | "-" | "*" | "/" | "%" | "==" | "!=" | "<=" | ">=" | "<" | ">" }
+unary_op     = { "!" | "-" }
+unary_expr   = { unary_op ~ atom }
+field_access = { ident ~ ("." ~ ident)+ }
+// slice_expr must precede index_expr: both open with ident ~ "[" ~ expr,
+// slice disambiguates with ".." after the first expression.
+// ".." is not in `op` so `expr` stops before it — no ambiguity.
+slice_expr   = { ident ~ "[" ~ expr ~ ".." ~ expr ~ "]" }
+index_expr   = { ident ~ "[" ~ expr ~ "]" }
+// builtin_expr: inline builtin call usable as a pipe expression.
+// Distinct from `builtin_call` (whole function body, no argument list).
+// Must be tried before `call` because "builtin" is a valid ident.
+builtin_expr = { "builtin" ~ "::" ~ ident ~ "(" ~ (expr ~ ("," ~ expr)*)? ~ ")" }
+closure_param = { ident ~ ":" ~ ty }
+closure       = { "|" ~ (closure_param ~ ("," ~ closure_param)*)? ~ "|" ~ "->" ~ ty ~ "{" ~ expr ~ "}" }
+call         = { ident ~ "(" ~ call_arg ~ ("," ~ call_arg)* ~ ")" }
+// Order: builtin_expr before call (both start with ident ~ "(", but
+//        builtin_expr has "::" in between so they don't actually conflict;
+//        listed first for readability and safety).
+// slice before index (same prefix, slice needs ".." lookahead).
+// field_access before ident ("foo.bar" must not match as just "foo").
+// unary_expr last ("-5" matches integer's built-in "-"? prefix first).
+// builtin_call must be tried after builtin_expr (both start with "builtin::") and
+// before ident ("builtin" would otherwise match as a plain identifier).
+atom         = { builtin_expr | builtin_call | closure | call | float | integer | string_lit | slice_expr | index_expr | field_access | ident | unary_expr }
+expr         = { atom ~ (op ~ atom)* }
+tuple_expr = { "(" ~ expr ~ ("," ~ expr)+ ~ ")" }
+pipe_val   = { tuple_expr | expr }
+
+// ── Input list  (a, b, …) or () ──────────────────────────────────────────────
+input_input = { bullet_ref | closure | float | integer | string_lit | slice_expr | index_expr | field_access | ident }
+input_list  = { "(" ~ (input_input ~ ("," ~ input_input)*)? ~ ")" }
+
+// ── Pipe statement ────────────────────────────────────────────────────────────
+propagate_op = { "?" }
+pipe = { input_list ~ ":" ~ pipe_val ~ "->" ~ binding ~ propagate_op? ~ ";" }
+
+// ── Native backend escape block ──────────────────────────────────────────────
+// @<backend> ... @end  — verbatim code for a specific target backend.
+// The backend name is any identifier: rust, python, go, etc.
+// The compiler validates that the backend matches the build target.
+// Native backend escape block.
+// Captured as a single atomic token to preserve all internal whitespace exactly.
+// The parser splits it into (backend_name, code) by finding the first newline.
+// Format:  @rust\n...code...\n    @end
+//   OR:   @python\n...code...\n    @end
+native_block = @{ "@" ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* ~ (!"@end" ~ ANY)* ~ "@end" }
+
+// builtin::name  — resolved at codegen time from the stdlib table.
+builtin_call = { "builtin" ~ "::" ~ ident }
+
+// ── Bullet body: pure pipes, one native block, or a builtin reference ─────────
+bullet_body = { builtin_call | native_block+ | pipe+ }
+
+// ── Function signature ────────────────────────────────────────────────────────
+param       = { ident ~ ":" ~ ty }
+param_list  = { "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
+output_decl = { "->" ~ ident ~ ":" ~ ty }
+
+// ── Bullet ────────────────────────────────────────────────────────────────────
+// ── Bullet (function declaration) ────────────────────────────────────────────
+type_params = { "[" ~ ident ~ ("," ~ ident)* ~ "]" }
+bullet      = { "let" ~ ident ~ type_params? ~ param_list ~ output_decl? ~ "{" ~ bullet_body ~ "}" }
+
+// ── Struct definitions (declared in inventory.bu, not in source files) ────────
+struct_field  = { ident ~ ":" ~ ty }
+struct_fields = { struct_field ~ ("," ~ struct_field)* ~ ","? }
+struct_def    = { "struct" ~ ident ~ "{" ~ struct_fields ~ "}" }
+
+// ── Enum definitions (declared in inventory.bu, not in source files) ──────────
+enum_variant  = { ident }
+enum_variants = { enum_variant ~ ("," ~ enum_variant)* ~ ","? }
+enum_def      = { "enum" ~ ident ~ "{" ~ enum_variants ~ "}" }
+
+// ── Source file: only bullet declarations — no structs, no metadata ───────────
+source_file = { SOI ~ bullet* ~ EOI }
+
+// ── Inventory file ────────────────────────────────────────────────────────────
+rank_val       = { "war" | "theater" | "battle" | "strategy" | "tactic" | "skirmish" }
+dir_rank       = { "#rank" ~ ":" ~ rank_val ~ ";" }
+lang_val       = { "rs" | "py" | "c" | "cpp" | "go" }
+dir_lang       = { "#lang" ~ ":" ~ lang_val ~ ";" }
+lib_name       = @{ (!(";" | NEWLINE) ~ ANY)+ }
+dir_lib        = { "#lib" ~ ":" ~ lib_name ~ ";" }
+inv_entry      = { ident ~ ":" ~ ident ~ ("," ~ ident)* ~ ";" }
+
+inventory_file = { SOI ~ dir_rank ~ dir_lang? ~ dir_lib* ~ (struct_def | enum_def)* ~ inv_entry* ~ EOI }

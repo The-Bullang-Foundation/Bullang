@@ -1,0 +1,3 @@
+target/
+bullang-vscode/node_modules
+bullang-vscode/bullang-1.0.0.vsix

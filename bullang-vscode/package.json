@@ -1,0 +1,61 @@
+{
+  "name": "bullang",
+  "displayName": "Bullang",
+  "description": "Syntax highlighting, diagnostics, hover, and go-to-definition for Bullang (.bu files).",
+  "version": "1.0.4",
+  "publisher": "bullang-dev",
+  "icon": "bullanglogo.png",
+  "license": "MIT",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "keywords": ["bullang", "transpiler", "functional"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/My-sidequests/Bullang"
+  },
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [{
+      "id": "bullang",
+      "aliases": ["Bullang", "bu"],
+      "extensions": [".bu"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "bullang",
+      "scopeName": "source.bullang",
+      "path": "./syntaxes/bullang.tmLanguage.json"
+    }],
+    "configuration": {
+      "title": "Bullang",
+      "properties": {
+        "bullang.serverPath": {
+          "type": "string",
+          "default": "bullang",
+          "description": "Path to the bullang binary. Defaults to 'bullang' (must be on PATH)."
+        },
+        "bullang.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace LSP messages between VS Code and the Bullang server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch":   "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node":   "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript":    "^5.0.0",
+    "@vscode/vsce":  "^2.0.0"
+  }
+}

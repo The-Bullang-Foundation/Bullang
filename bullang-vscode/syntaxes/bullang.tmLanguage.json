@@ -1,0 +1,95 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Bullang",
+  "scopeName": "source.bullang",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#directive" },
+    { "include": "#function_decl" },
+    { "include": "#native_block" },
+    { "include": "#builtin_call" },
+    { "include": "#pipe_arrow" },
+    { "include": "#binding" },
+    { "include": "#keyword" },
+    { "include": "#type" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#operator" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-slash.bullang",
+      "match": "//.*$"
+    },
+    "directive": {
+      "match": "(#rank|#lang|#lib)\\s*(:)\\s*([\\w.]+)\\s*(;)",
+      "captures": {
+        "1": { "name": "keyword.control.directive.bullang" },
+        "2": { "name": "punctuation.separator.bullang" },
+        "3": { "name": "string.unquoted.bullang" },
+        "4": { "name": "punctuation.terminator.bullang" }
+      }
+    },
+    "function_decl": {
+      "match": "\\b(let)\\s+([a-z_][a-zA-Z0-9_]*)\\s*\\(",
+      "captures": {
+        "1": { "name": "keyword.declaration.function.bullang" },
+        "2": { "name": "entity.name.function.bullang" }
+      }
+    },
+    "native_block": {
+      "name": "meta.embedded.bullang",
+      "begin": "@(rust|python|c|cpp|go)\\b",
+      "end": "@end\\b",
+      "beginCaptures": { "0": { "name": "keyword.control.native.bullang" } },
+      "endCaptures":   { "0": { "name": "keyword.control.native.bullang" } },
+      "contentName": "comment.block.embedded.bullang"
+    },
+    "builtin_call": {
+      "match": "\\b(builtin)(::)([a-z_]+)\\b",
+      "captures": {
+        "1": { "name": "support.class.bullang" },
+        "2": { "name": "punctuation.accessor.bullang" },
+        "3": { "name": "support.function.builtin.bullang" }
+      }
+    },
+    "pipe_arrow": {
+      "name": "keyword.operator.arrow.bullang",
+      "match": "->"
+    },
+    "binding": {
+      "match": "\\{([a-z_][a-zA-Z0-9_]*)\\}",
+      "captures": { "1": { "name": "variable.other.binding.bullang" } }
+    },
+    "keyword": {
+      "name": "keyword.control.bullang",
+      "match": "\\b(let|war|theater|battle|strategy|tactic|skirmish)\\b"
+    },
+    "type": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.bullang",
+          "match": "\\b(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|bool|char|String|str)\\b"
+        },
+        {
+          "name": "support.type.generic.bullang",
+          "match": "\\b(Vec|Option|Result|Tuple|Fn|Box|HashMap)(?=\\[)"
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.bullang",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [{ "name": "constant.character.escape.bullang", "match": "\\\\." }]
+    },
+    "number": {
+      "name": "constant.numeric.bullang",
+      "match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?\\b"
+    },
+    "operator": {
+      "name": "keyword.operator.bullang",
+      "match": "[+\\-*/%]"
+    }
+  }
+}
