@@ -359,6 +359,9 @@ pub fn lower_enum_refs(sf: &mut SourceFile, enum_env: &EnumEnv) {
     for bullet in &mut sf.bullets {
         if let BulletBody::Pipes(pipes) = &mut bullet.body {
             for pipe in pipes {
+                for input in &mut pipe.inputs {
+                    lower_expr(input, enum_env);
+                }
                 lower_expr(&mut pipe.expr, enum_env);
             }
         }
