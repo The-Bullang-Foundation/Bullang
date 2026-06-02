@@ -36,8 +36,30 @@ enum Command {
 
 fn main() {
     let cli = Cli::parse();
+
+    let update_handle = match cli.command {
+        Command::Update => None,
+        _ => Some(std::thread::spawn(|| {
+            let remote = cmd::remote_head(cmd::DEFAULT_REPO, "main")?;
+            let installed = cmd::installed_hash("bullang", cmd::DEFAULT_REPO, "main")?;
+            if installed == remote {
+                None // Pas de message si déjà à jour
+            } else {
+                Some(format!(
+                    "\nA new version of bullang is available. Run `bullang update` to install."
+                ))
+            }
+        })),
+    };
+
     match cli.command {
         Command::Stdlib => cmd::cmd_stdlib(),
         Command::Update => cmd::cmd_update(),
+    }
+
+    if let Some(handle) = update_handle {
+        if let Ok(Some(msg)) = handle.join() {
+            println!("{}", msg);
+        }
     }
 }

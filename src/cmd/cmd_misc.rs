@@ -3,7 +3,7 @@
 use bullang::stdlib;
 
 /// The canonical source repository.
-const DEFAULT_REPO: &str = "https://github.com/My-sidequests/Bullang.git";
+pub const DEFAULT_REPO: &str = "https://github.com/My-sidequests/Bullang.git";
 
 // ── update ────────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ pub fn cmd_update() {
 /// Fetch the HEAD commit hash of `branch` from a remote git repository.
 /// Returns the full 40-character SHA, or None if git is unavailable or the
 /// repo cannot be reached.
-fn remote_head(repo: &str, branch: &str) -> Option<String> {
+pub fn remote_head(repo: &str, branch: &str) -> Option<String> {
     let output = std::process::Command::new("git")
         .args(["ls-remote", repo, &format!("refs/heads/{}", branch)])
         .output()
@@ -53,8 +53,8 @@ fn remote_head(repo: &str, branch: &str) -> Option<String> {
 /// Read the commit hash for `package` as recorded in ~/.cargo/.crates2.json.
 /// Returns the short hash stored by cargo (e.g. "aaec925f"), or None if not
 /// found or the file cannot be parsed.
-fn installed_hash(package: &str, repo: &str, branch: &str) -> Option<String> {
-    let cargo_home = std::env::var("CARGO_HOME")
+pub fn installed_hash(package: &str, repo: &str, branch: &str) -> Option<String> {
+    let cargo_home = std::env::var("CARGO_installed_hashHOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| {
             let home = std::env::var("HOME").unwrap_or_default();
