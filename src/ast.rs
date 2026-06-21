@@ -21,7 +21,6 @@ pub enum Backend {
     C,
     Cpp,
     Go,
-    Java,
     /// An unrecognised backend name written in an escape block.
     Unknown(String),
 }
@@ -34,7 +33,6 @@ impl Backend {
             "c"   => Some(Backend::C),
             "cpp" | "cc" | "cxx" => Some(Backend::Cpp),
             "go"  => Some(Backend::Go),
-            "java" => Some(Backend::Java),
             _     => None,
         }
     }
@@ -45,7 +43,6 @@ impl Backend {
             Backend::C          => "c",
             Backend::Cpp        => "cpp",
             Backend::Go         => "go",
-            Backend::Java       => "java",
             Backend::Unknown(_) => "unknown",
         }
     }
@@ -56,7 +53,6 @@ impl Backend {
             Backend::C          => "c",
             Backend::Cpp        => "cpp",
             Backend::Go         => "go",
-            Backend::Java       => "java",
             Backend::Unknown(_) => "?",
         }
     }
@@ -67,7 +63,6 @@ impl Backend {
             Backend::C           => "c".to_string(),
             Backend::Cpp         => "cpp".to_string(),
             Backend::Go          => "go".to_string(),
-            Backend::Java        => "java".to_string(),
             Backend::Unknown(s)  => s.clone(),
         }
     }
@@ -346,6 +341,7 @@ pub struct InventoryFile {
     pub libs:    Vec<String>,          // #lib: header; (C/C++ only)
     pub structs: Vec<StructDef>,       // struct definitions for this folder
     pub enums:   Vec<EnumDef>,         // enum definitions for this folder
+    pub natives: Vec<NativeBlock>,     // verbatim language-specific blocks (e.g. @cpp class)
     pub entries: Vec<InventoryEntry>,  // one per source file in this folder
 }
 

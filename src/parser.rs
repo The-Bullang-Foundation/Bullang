@@ -265,6 +265,7 @@ fn parse_inventory(pair: Pair<Rule>) -> InventoryFile {
     let mut libs    = Vec::new();
     let mut structs = Vec::new();
     let mut enums   = Vec::new();
+    let mut natives = Vec::new();
     let mut entries = Vec::new();
 
     for inner in pair.into_inner() {
@@ -286,6 +287,9 @@ fn parse_inventory(pair: Pair<Rule>) -> InventoryFile {
             Rule::enum_def => {
                 enums.push(parse_enum_def(inner));
             }
+            Rule::native_block => {
+                natives.push(parse_native_block(inner.as_str()));
+            }
             Rule::inv_entry => {
                 let mut ci    = inner.into_inner();
                 let file      = ci.next().unwrap().as_str().to_string();
@@ -303,6 +307,7 @@ fn parse_inventory(pair: Pair<Rule>) -> InventoryFile {
         libs,
         structs,
         enums,
+        natives,
         entries,
     }
 }
@@ -391,7 +396,6 @@ fn parse_native_block(raw: &str) -> NativeBlock {
         "c"      => Backend::C,
         "cpp"    => Backend::Cpp,
         "go"     => Backend::Go,
-        "java"   => Backend::Java,
         other    => Backend::Unknown(other.to_string()),
     };
     NativeBlock { backend, code }
