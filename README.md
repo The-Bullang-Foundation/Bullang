@@ -34,8 +34,7 @@ cargo install --git https://github.com/The-Bullang-Foundation/Bullang.git --forc
 ```bash
 cargo install --git https://github.com/The-Bullang-Foundation/Bullang.git --force bullang \
   && cargo install --git https://github.com/The-Bullang-Foundation/Bullarchy.git --force bullarchy \
-  && cargo install --git https://github.com/The-Bullang-Foundation/Bullscript.git --force bullscript \
-  && cargo install --git https://github.com/The-Bullang-Foundation/Bullarchy-gui.git --force bullarchy-gui
+  && cargo install --git https://github.com/The-Bullang-Foundation/Bullscript.git --force bullscript
 ```
 
 ### Update
