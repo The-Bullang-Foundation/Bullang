@@ -7,15 +7,8 @@
 /// Full builtin catalogue: (name, signature, description).
 pub const BUILTINS: &[(&str, &str, &str)] = &[
     // math
-    ("abs",            "abs(x: i64) -> i64",                        "absolute value"),
-    ("pow",            "pow(base: i64, exp: i64) -> i64",            "integer exponentiation"),
-    ("powf",           "powf(base: f64, exp: f64) -> f64",           "floating-point exponentiation"),
-    ("sqrt",           "sqrt(x: f64) -> f64",                        "square root"),
-    ("clamp",          "clamp(x: i64, lo: i64, hi: i64) -> i64",     "clamp x between lo and hi"),
     ("min",            "min(a: i64, b: i64) -> i64",                 "minimum of two integers"),
     ("max",            "max(a: i64, b: i64) -> i64",                 "maximum of two integers"),
-    ("log",            "log(x: f64, base: f64) -> f64",              "logarithm"),
-    ("exp",            "exp(x: f64) -> f64",                         "e raised to the power x"),
     // conditions
     ("tern",           "tern(cond: bool, a: T, b: T) -> T",          "ternary — returns a if cond, else b"),
     // string
@@ -30,10 +23,6 @@ pub const BUILTINS: &[(&str, &str, &str)] = &[
     ("len",            "len(s: String) -> i64",                      "string or array length"),
     // algorithms
     ("swap",           "swap(a: T, b: T) -> (T, T)",                 "swap two values"),
-    ("insertion_sort", "insertion_sort(arr: [i64]) -> [i64]",        "insertion sort"),
-    ("quick_sort",     "quick_sort(arr: [i64]) -> [i64]",            "quicksort"),
-    ("merge_sort",     "merge_sort(arr: [i64]) -> [i64]",            "merge sort"),
-    ("radix_sort",     "radix_sort(arr: [i64]) -> [i64]",            "radix sort"),
     // io
     ("in",             "in(fd: i32) -> String",                      "read one line from a file descriptor"),
     ("out",            "out(fd: i32, content: String) -> i32",       "write a string to a file descriptor, returns bytes written"),
@@ -45,7 +34,6 @@ pub const BUILTINS: &[(&str, &str, &str)] = &[
     ("exit",           "exit(code: i64)",                            "exit with code"),
     ("env",            "env(key: String) -> String",                 "read environment variable"),
     ("sleep",          "sleep(ms: i64)",                             "sleep for ms milliseconds"),
-    ("run",            "run(cmd: String) -> i32",                    "run a shell command, returns exit code"),
 ];
 
 /// Return the full builtin catalogue.
