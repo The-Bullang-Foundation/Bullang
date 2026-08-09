@@ -1,0 +1,159 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Bullang",
+  "scopeName": "source.bullang",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#directive" },
+    { "include": "#function_decl" },
+    { "include": "#native_block" },
+    { "include": "#builtin_call" },
+    { "include": "#enum_variant" },
+    { "include": "#pipe_arrow" },
+    { "include": "#binding" },
+    { "include": "#rank_keyword" },
+    { "include": "#keyword" },
+    { "include": "#boolean" },
+    { "include": "#type" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#operator" },
+    { "include": "#parameter" }
+  ],
+  "repository": {
+
+    "comment": {
+      "name": "comment.line.double-slash.bullang",
+      "match": "//.*$"
+    },
+
+    "directive": {
+      "match": "(#rank|#lang|#lib|#blueprint)\\s*(:)\\s*([\\w./]+)\\s*(;)",
+      "captures": {
+        "1": { "name": "keyword.control.directive.bullang" },
+        "2": { "name": "punctuation.separator.bullang" },
+        "3": { "name": "entity.other.attribute-name.bullang" },
+        "4": { "name": "punctuation.terminator.bullang" }
+      }
+    },
+
+    "function_decl": {
+      "match": "\\b(let)\\s+([a-z_][a-zA-Z0-9_]*)\\s*(<[^>]*>)?\\s*\\(",
+      "captures": {
+        "1": { "name": "storage.type.function.bullang" },
+        "2": { "name": "entity.name.function.bullang" },
+        "3": { "name": "support.type.generic.parameter.bullang" }
+      }
+    },
+
+    "native_block": {
+      "name": "meta.embedded.block.bullang",
+      "begin": "@(rust|python|c|cpp|go|java)\\b",
+      "end": "@end\\b",
+      "beginCaptures": {
+        "0": { "name": "keyword.control.native.begin.bullang" }
+      },
+      "endCaptures": {
+        "0": { "name": "keyword.control.native.end.bullang" }
+      },
+      "contentName": "comment.block.embedded.bullang"
+    },
+
+    "builtin_call": {
+      "match": "\\b(builtin)(::)([a-z_][a-z_0-9]*)\\b",
+      "captures": {
+        "1": { "name": "support.class.builtin.bullang" },
+        "2": { "name": "punctuation.accessor.bullang" },
+        "3": { "name": "support.function.builtin.bullang" }
+      }
+    },
+
+    "enum_variant": {
+      "match": "\\b([A-Z][a-zA-Z0-9_]*)(::)([A-Z][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "entity.name.type.enum.bullang" },
+        "2": { "name": "punctuation.accessor.bullang" },
+        "3": { "name": "variable.other.enummember.bullang" }
+      }
+    },
+
+    "pipe_arrow": {
+      "name": "keyword.operator.arrow.bullang",
+      "match": "->"
+    },
+
+    "binding": {
+      "match": "\\{([a-z_][a-zA-Z0-9_]*)\\}",
+      "captures": {
+        "1": { "name": "variable.other.binding.bullang" }
+      }
+    },
+
+    "rank_keyword": {
+      "name": "storage.modifier.rank.bullang",
+      "match": "\\b(war|theater|battle|strategy|tactic|skirmish)\\b"
+    },
+
+    "keyword": {
+      "name": "keyword.declaration.bullang",
+      "match": "\\b(let|struct|enum|blueprint|native)\\b"
+    },
+
+    "boolean": {
+      "name": "constant.language.boolean.bullang",
+      "match": "\\b(true|false)\\b"
+    },
+
+    "type": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.bullang",
+          "match": "\\b(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|bool|char|String|str)\\b"
+        },
+        {
+          "name": "support.type.generic.bullang",
+          "match": "\\b(Vec|Option|Result|Tuple|Fn|Box|HashMap)(?=\\[)"
+        },
+        {
+          "name": "entity.name.type.bullang",
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\b"
+        }
+      ]
+    },
+
+    "parameter": {
+      "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(:)\\s*([A-Z][a-zA-Z0-9_]*|i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|bool|char|String|str)\\b",
+      "captures": {
+        "1": { "name": "variable.parameter.bullang" },
+        "2": { "name": "punctuation.separator.type.bullang" },
+        "3": { "name": "support.type.primitive.bullang" }
+      }
+    },
+
+    "string": {
+      "name": "string.quoted.double.bullang",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.bullang",
+          "match": "\\\\."
+        },
+        {
+          "name": "variable.other.interpolated.bullang",
+          "match": "\\{[a-z_][a-zA-Z0-9_]*\\}"
+        }
+      ]
+    },
+
+    "number": {
+      "name": "constant.numeric.bullang",
+      "match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?\\b"
+    },
+
+    "operator": {
+      "name": "keyword.operator.bullang",
+      "match": "(==|!=|<=|>=|&&|\\|\\||->|::|!|[+\\-*/%<>]|:)"
+    }
+  }
+}

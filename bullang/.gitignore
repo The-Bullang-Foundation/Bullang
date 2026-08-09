@@ -1,0 +1,8 @@
+/target
+**/*.rs.bk
+Cargo.lock
+
+# VS Code extension build output
+bullang-vscode/node_modules/
+bullang-vscode/out/
+bullang-vscode/*.vsix

@@ -1,0 +1,153 @@
+// ── Whitespace & comments ─────────────────────────────────────────────────────
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT    = _{ "//" ~ (!"\n" ~ ANY)* }
+
+// ── Identifiers & literals ────────────────────────────────────────────────────
+// A leading underscore is allowed, matching BullScript's lexer.
+ident      = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+float      = @{ "-"? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+integer    = @{ "-"? ~ ASCII_DIGIT+ }
+
+// ── Type system ───────────────────────────────────────────────────────────────
+//
+// Deliberately small. Every type here has an obvious, faithful counterpart in
+// all six target languages; anything that did not translate cleanly has been
+// removed rather than approximated:
+//
+//   references (&T, &mut T)  — a Rust concept with no meaning in Python or Go
+//   function types (Fn[..])  — went with closures and bullet references
+//   generic args (Vec[T])    — no way to build a collection, so nothing to type
+//   fixed arrays ([T; N])    — C cannot return one, and value-vs-alias
+//                              semantics split the targets down the middle
+//
+// Collections will come back as one designed feature — literals, indexing,
+// length and iteration together — rather than as a type with no values.
+//
+//   ty_unit  = ()
+//   ty_tuple = Tuple[T, U]
+//   ty_atom  = i32, String, a struct or enum name declared in inventory.bu
+ty_unit       = { "(" ~ ")" }
+ty_tuple_args = { ty ~ ("," ~ ty)+ }
+ty_tuple      = { "Tuple" ~ "[" ~ ty_tuple_args ~ "]" }
+ty_atom       = { ident }
+// ty_tuple must be tried before ty_atom: both can start with an identifier.
+ty            = { ty_unit | ty_tuple | ty_atom }
+
+// ── Binding  {name} ───────────────────────────────────────────────────────────
+binding = { "{" ~ ident? ~ "}" }
+
+// ── String literals ───────────────────────────────────────────────────────────
+// Stored verbatim (quotes included) by the @-atomic rule so escape sequences and
+// interpolation placeholders survive to code generation, where each backend
+// re-emits them into its own string syntax.
+//
+// A backslash escapes the character after it, so \" does not close the string.
+// A literal newline is not allowed: an unterminated quote would otherwise
+// swallow the rest of the file and report the error far from the mistake.
+string_char = { "\\" ~ ANY | !("\"" | "\\" | NEWLINE) ~ ANY }
+string_lit  = @{ "\"" ~ string_char* ~ "\"" }
+
+// ── Call arguments ────────────────────────────────────────────────────────────
+// Values only. A call may not appear as an argument to another call: nesting
+// hides a step, and a bullet is meant to be read one line at a time. Write the
+// inner call as its own bullet and pass its binding.
+call_arg = { float | integer | string_lit | slice_expr | index_expr | field_access | ident }
+
+// ── Expressions ───────────────────────────────────────────────────────────────
+//
+// A bullet holds exactly one operation: `a + b` is a bullet, `a + b + c` is
+// two. There is therefore no operator precedence to define and no need for
+// parentheses — the shape of the code is the order of evaluation.
+op           = { "&&" | "||" | "+" | "-" | "*" | "/" | "%" | "==" | "!=" | "<=" | ">=" | "<" | ">" }
+unary_op     = { "!" | "-" }
+unary_expr   = { unary_op ~ atom }
+field_access = { ident ~ ("." ~ ident)+ }
+// slice_expr must precede index_expr: both open with ident ~ "[" ~ expr,
+// slice disambiguates with ".." after the first expression.
+slice_expr   = { ident ~ "[" ~ expr ~ ".." ~ expr ~ "]" }
+index_expr   = { ident ~ "[" ~ expr ~ "]" }
+// builtin_expr: inline builtin call usable as a bullet expression.
+// Distinct from `builtin_call` (whole bullet body, no argument list).
+builtin_expr = { "builtin" ~ "::" ~ ident ~ "(" ~ (expr ~ ("," ~ expr)*)? ~ ")" }
+call         = { ident ~ "(" ~ call_arg ~ ("," ~ call_arg)* ~ ")" }
+// `builtin_call` — the bare `builtin::name` form — is deliberately absent
+// here. It takes its arguments from the bullet's input list, so it only makes
+// sense as a whole bullet expression or a whole bullet body, never as one side
+// of an operator: `builtin::to_upper + b` has no reading.
+//
+// Order: builtin_expr before call and ident (it opens "builtin::").
+//        slice before index (same prefix). field_access before
+//        ident ("foo.bar" must not match as just "foo"). unary_expr last
+//        ("-5" matches integer's own "-"? prefix first).
+atom         = { builtin_expr | call | float | integer | string_lit | slice_expr | index_expr | field_access | ident | unary_expr }
+expr         = { atom ~ (op ~ atom)? }
+tuple_expr   = { "(" ~ expr ~ ("," ~ expr)+ ~ ")" }
+pipe_val     = { tuple_expr | builtin_call | expr }
+
+// ── Input list  (a, b, …) or () ──────────────────────────────────────────────
+input_input = { float | integer | string_lit | slice_expr | index_expr | field_access | ident }
+input_list  = { "(" ~ (input_input ~ ("," ~ input_input)*)? ~ ")" }
+
+// ── Bullet statement ──────────────────────────────────────────────────────────
+pipe = { input_list ~ ":" ~ pipe_val ~ "->" ~ binding ~ ";" }
+
+// ── Native backend escape block ──────────────────────────────────────────────
+//
+// @<backend> ... @end — verbatim code for one target backend.
+//
+// Bullang decides three things about a block and nothing else: where it starts,
+// where it ends, and which backend it names. Everything between is opaque —
+// copied into the generated file byte for byte, indentation included. It is
+// never parsed, never reindented, never validated.
+//
+// The backend name must be followed by a newline, so "@rust@end" is rejected
+// rather than read as a backend called "rust@end". "@end" cannot appear inside
+// a block: it is the terminator.
+native_block = @{ "@" ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* ~ (" " | "\t")* ~ NEWLINE ~ (!"@end" ~ ANY)* ~ "@end" }
+
+// builtin::name — the bare form, taking its arguments from the bullet's input
+// list. The trailing `!"("` keeps it from swallowing the name of an inline
+// call: `builtin::min(x, 3)` must reach `builtin_expr`, not match here and
+// leave the argument list stranded.
+builtin_call = { "builtin" ~ "::" ~ ident ~ !"(" }
+
+// ── Bullet body: pure bullets, one native block, or a builtin reference ───────
+bullet_body = { builtin_call | native_block | pipe+ }
+
+// ── Function signature ────────────────────────────────────────────────────────
+param       = { ident ~ ":" ~ ty }
+param_list  = { "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
+output_decl = { "->" ~ ident ~ ":" ~ ty }
+
+// ── Bullet (function declaration) ────────────────────────────────────────────
+type_params = { "[" ~ ident ~ ("," ~ ident)* ~ "]" }
+bullet      = { "let" ~ ident ~ type_params? ~ param_list ~ output_decl? ~ "{" ~ bullet_body ~ "}" }
+
+// ── Struct definitions (declared in inventory.bu, not in source files) ────────
+struct_field  = { ident ~ ":" ~ ty }
+struct_fields = { struct_field ~ ("," ~ struct_field)* ~ ","? }
+struct_def    = { "struct" ~ ident ~ "{" ~ struct_fields ~ "}" }
+
+// ── Enum definitions (declared in inventory.bu, not in source files) ──────────
+enum_variant  = { ident }
+enum_variants = { enum_variant ~ ("," ~ enum_variant)* ~ ","? }
+enum_def      = { "enum" ~ ident ~ "{" ~ enum_variants ~ "}" }
+
+// ── Source file: only bullet declarations — no structs, no metadata ───────────
+source_file = { SOI ~ bullet* ~ EOI }
+
+// ── Inventory file ────────────────────────────────────────────────────────────
+//
+// #lib and #use are different things and are spelled differently:
+//   #lib: stdio.h;   a native header or system library of the target language
+//   #use: mathlib;   a Bullang package installed by `bullarchy add`
+rank_val       = { "war" | "theater" | "battle" | "strategy" | "tactic" | "skirmish" }
+dir_rank       = { "#rank" ~ ":" ~ rank_val ~ ";" }
+lang_val       = { "rs" | "py" | "cpp" | "c" | "go" | "java" }
+dir_lang       = { "#lang" ~ ":" ~ lang_val ~ ";" }
+lib_name       = @{ (!(";" | NEWLINE) ~ ANY)+ }
+dir_lib        = { "#lib" ~ ":" ~ lib_name ~ ";" }
+dir_use        = { "#use" ~ ":" ~ ident ~ ";" }
+inv_entry      = { ident ~ ":" ~ ident ~ ("," ~ ident)* ~ ";" }
+
+inventory_file = { SOI ~ dir_rank ~ dir_lang? ~ (dir_lib | dir_use)* ~ (struct_def | enum_def | native_block)* ~ inv_entry* ~ EOI }

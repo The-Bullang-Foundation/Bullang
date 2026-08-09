@@ -1,0 +1,28 @@
+[package]
+name          = "bullarchy"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[[bin]]
+name = "bullarchy"
+path = "src/main.rs"
+
+[features]
+mathlib = ["dep:bull-mathlib"]
+netlib  = ["dep:bull-netlib"]
+
+[dependencies]
+# A workspace member, by path. The git dependency this replaces meant the two
+# were built from whatever was last pushed rather than from what is here.
+bullang = { path = "../bullang" }
+
+rustyline.workspace  = true
+clap.workspace       = true
+serde_json.workspace = true
+ureq.workspace       = true
+
+# Packages stay external: they are installed by `bullarchy add`, not vendored.
+bull-mathlib = { git = "https://github.com/The-Bullang-Foundation/Mathlib.git", optional = true }
+bull-netlib  = { git = "https://github.com/The-Bullang-Foundation/Netlib.git",  optional = true }

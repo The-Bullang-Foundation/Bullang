@@ -1,0 +1,250 @@
+{
+  "name": "bullang",
+  "displayName": "Bullang",
+  "description": "Syntax highlighting, diagnostics, hover, and go-to-definition for Bullang (.bu files).",
+  "version": "1.1.0",
+  "publisher": "bullang-dev",
+  "icon": "bullanglogo.png",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "bullang",
+    "transpiler",
+    "functional"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/The-Bullang-Foundation/Bullang"
+  },
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "bullang",
+        "aliases": [
+          "Bullang",
+          "bu"
+        ],
+        "extensions": [
+          ".bu"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "bullang",
+        "scopeName": "source.bullang",
+        "path": "./syntaxes/bullang.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Bullang",
+      "properties": {
+        "bullang.serverPath": {
+          "type": "string",
+          "default": "bullang",
+          "description": "Path to the bullang binary. Defaults to 'bullang' (must be on PATH)."
+        },
+        "bullang.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace LSP messages between VS Code and the Bullang server."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "storage.type.function.bullang",
+            "settings": {
+              "foreground": "#61AFEF"
+            }
+          },
+          {
+            "scope": "entity.name.function.bullang",
+            "settings": {
+              "foreground": "#61AFEF"
+            }
+          },
+          {
+            "scope": "variable.parameter.bullang",
+            "settings": {
+              "foreground": "#E06C75"
+            }
+          },
+          {
+            "scope": "support.type.primitive.bullang",
+            "settings": {
+              "foreground": "#98C379"
+            }
+          },
+          {
+            "scope": "support.type.generic.bullang",
+            "settings": {
+              "foreground": "#98C379"
+            }
+          },
+          {
+            "scope": "entity.name.type.bullang",
+            "settings": {
+              "foreground": "#98C379"
+            }
+          },
+          {
+            "scope": "storage.modifier.rank.bullang",
+            "settings": {
+              "foreground": "#C678DD",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.declaration.bullang",
+            "settings": {
+              "foreground": "#C678DD"
+            }
+          },
+          {
+            "scope": "keyword.control.directive.bullang",
+            "settings": {
+              "foreground": "#E5C07B"
+            }
+          },
+          {
+            "scope": "entity.other.attribute-name.bullang",
+            "settings": {
+              "foreground": "#E5C07B"
+            }
+          },
+          {
+            "scope": "keyword.control.native.begin.bullang",
+            "settings": {
+              "foreground": "#E06C75",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.control.native.end.bullang",
+            "settings": {
+              "foreground": "#E06C75",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "support.class.builtin.bullang",
+            "settings": {
+              "foreground": "#56B6C2"
+            }
+          },
+          {
+            "scope": "support.function.builtin.bullang",
+            "settings": {
+              "foreground": "#61AFEF"
+            }
+          },
+          {
+            "scope": "variable.other.binding.bullang",
+            "settings": {
+              "foreground": "#E5C07B"
+            }
+          },
+          {
+            "scope": "variable.other.interpolated.bullang",
+            "settings": {
+              "foreground": "#E5C07B"
+            }
+          },
+          {
+            "scope": "string.quoted.double.bullang",
+            "settings": {
+              "foreground": "#98C379"
+            }
+          },
+          {
+            "scope": "constant.numeric.bullang",
+            "settings": {
+              "foreground": "#D19A66"
+            }
+          },
+          {
+            "scope": "constant.language.boolean.bullang",
+            "settings": {
+              "foreground": "#C678DD"
+            }
+          },
+          {
+            "scope": "entity.name.type.enum.bullang",
+            "settings": {
+              "foreground": "#E5C07B"
+            }
+          },
+          {
+            "scope": "variable.other.enummember.bullang",
+            "settings": {
+              "foreground": "#E06C75"
+            }
+          },
+          {
+            "scope": "keyword.operator.bullang",
+            "settings": {
+              "foreground": "#ABB2BF"
+            }
+          },
+          {
+            "scope": "keyword.operator.arrow.bullang",
+            "settings": {
+              "foreground": "#56B6C2",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "comment.line.double-slash.bullang",
+            "settings": {
+              "foreground": "#5C6370",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": "comment.block.embedded.bullang",
+            "settings": {
+              "foreground": "#7F848E",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": "punctuation.separator.type.bullang",
+            "settings": {
+              "foreground": "#ABB2BF"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.0.0"
+  }
+}

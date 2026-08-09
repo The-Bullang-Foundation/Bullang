@@ -1,0 +1,31 @@
+# The Bullang workspace.
+#
+# Two crates, not one. `bullang` is the language — grammar, AST, parser,
+# formatter and the builtin catalogue — and nothing else. `bullarchy` is the
+# toolchain built on it: codegen for six backends, the validator, the LSP, the
+# CLI and the GUI.
+#
+# The split exists for packages. `bull-mathlib` and anything else installed
+# with `bullarchy add` depends on `bullang` for `ast::{Backend, Param}`, which
+# is the signature every builtin emitter is written against. Folding the two
+# together would make every package depend on the whole toolchain — six code
+# generators, an LSP and an HTTP client — to describe one function.
+[workspace]
+resolver = "2"
+members  = ["bullang", "bullarchy"]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/The-Bullang-Foundation/Bullang"
+
+# Pinned where a version bump would change generated output or parse
+# behaviour, shared so the two crates cannot drift apart on them.
+[workspace.dependencies]
+pest        = "=2.7.14"
+pest_derive = "=2.7.14"
+clap        = { version = "=4.4.18", features = ["derive"] }
+serde_json  = "1"
+rustyline   = "14"
+ureq        = { version = "2", default-features = false, features = ["tls", "json"] }

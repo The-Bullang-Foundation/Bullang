@@ -1,0 +1,596 @@
+use pest::iterators::Pair;
+use crate::ast::*;
+
+#[derive(pest_derive::Parser)]
+#[grammar = "grammar.pest"]
+pub struct BulParser;
+
+// ── Parse error type ──────────────────────────────────────────────────────────
+
+/// A parse error with file path, line, col and message.
+/// Separate from ValidationError so the display layer can format them
+/// consistently alongside structural/type errors.
+#[derive(Debug)]
+pub struct ParseError {
+    pub file:    String,
+    pub line:    usize,
+    pub col:     usize,
+    pub message: String,
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.line > 0 {
+            write!(f, "[{}:{}:{}] {}", self.file, self.line, self.col, self.message)
+        } else {
+            write!(f, "[{}] {}", self.file, self.message)
+        }
+    }
+}
+
+/// Result of a tolerant parse: successfully parsed bullets + any parse errors.
+pub struct ParseResult {
+    pub file:   BuFile,
+    pub errors: Vec<ParseError>,
+}
+
+// ── Public entry points ───────────────────────────────────────────────────────
+
+/// Strict parse — used for inventory files where there is no meaningful
+/// way to recover from a broken #rank or entry line.
+pub fn parse_file(
+    source:       &str,
+    is_inventory: bool,
+) -> Result<BuFile, Box<dyn std::error::Error>> {
+    use pest::Parser;
+    if is_inventory {
+        let mut pairs = BulParser::parse(Rule::inventory_file, source)?;
+        Ok(BuFile::Inventory(parse_inventory(pairs.next().unwrap())?))
+    } else {
+        let mut pairs = BulParser::parse(Rule::source_file, source)?;
+        Ok(BuFile::Source(parse_source(pairs.next().unwrap())))
+    }
+}
+
+/// Tolerant parse for source files.
+///
+/// Splits the source into individual `let …` function chunks by scanning
+/// for top-level `let` keywords. Each chunk is parsed independently so
+/// one broken function does not prevent the others from being validated.
+///
+/// Returns a ParseResult containing:
+///   - every bullet that parsed successfully (possibly empty)
+///   - every parse error encountered (possibly empty)
+pub fn parse_file_tolerant(source: &str, file_path: &str) -> ParseResult {
+    use pest::Parser;
+
+    // Fast path: try a strict parse first. If it succeeds there is nothing
+    // to recover from and we avoid the extra work of splitting.
+    if let Ok(mut pairs) = BulParser::parse(Rule::source_file, source) {
+        return ParseResult {
+            file:   BuFile::Source(parse_source(pairs.next().unwrap())),
+            errors: vec![],
+        };
+    }
+
+    // Recovery path: split at top-level `let` boundaries and parse each
+    // function independently.
+    let chunks = split_into_function_chunks(source);
+    let mut bullets = Vec::new();
+    let mut errors  = Vec::new();
+
+    for (chunk_src, line_offset) in chunks {
+        match BulParser::parse(Rule::source_file, &chunk_src) {
+            Ok(mut pairs) => {
+                let sf = parse_source(pairs.next().unwrap());
+                bullets.extend(sf.bullets);
+            }
+            Err(e) => {
+                let (line, col) = pest_error_location(&e);
+                let adjusted_line = line + line_offset.saturating_sub(1);
+                errors.push(ParseError {
+                    file:    file_path.to_string(),
+                    line:    adjusted_line,
+                    col,
+                    message: pest_error_message(&e),
+                });
+            }
+        }
+    }
+
+    ParseResult {
+        file:   BuFile::Source(SourceFile { bullets }),
+        errors,
+    }
+}
+
+// ── Function chunk splitter ───────────────────────────────────────────────────
+
+/// Split a source file into individual `let` function chunks.
+///
+/// Recovery only: a file that parses cleanly never reaches here. The goal is
+/// that one broken function does not hide the errors in the others, so we need
+/// to find where each function starts.
+///
+/// A plain "line starts with `let `" test is not enough, because `let` also
+/// appears *inside* things Bullang does not own — most obviously a Rust escape
+/// block:
+///
+///     let add(a: i32, b: i32) -> result: i32 {
+///         @rust
+///             let result = a + b;      <- not a function boundary
+///         @end
+///     }
+///
+/// Cutting there splits one valid function into two invalid fragments and
+/// reports errors pointing inside the escape block. So the scan tracks where it
+/// is: brace depth, escape blocks, string literals and line comments. Only a
+/// `let` at depth zero and outside all of those starts a new function.
+///
+/// Returns Vec<(chunk_source, start_line_number_1indexed)>.
+fn split_into_function_chunks(source: &str) -> Vec<(String, usize)> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut starts: Vec<usize> = Vec::new();
+
+    let mut depth: i32 = 0;
+    let mut in_native = false;
+
+    for (i, raw) in lines.iter().enumerate() {
+        let trimmed = raw.trim();
+
+        // Escape blocks are opaque: nothing inside them is Bullang.
+        if in_native {
+            if trimmed.starts_with("@end") {
+                in_native = false;
+            }
+            continue;
+        }
+        if trimmed.starts_with('@') && !trimmed.starts_with("@end") {
+            in_native = true;
+            continue;
+        }
+
+        if depth == 0 && (trimmed == "let" || trimmed.starts_with("let ")) {
+            starts.push(i);
+        }
+
+        depth += brace_delta(raw);
+        if depth < 0 { depth = 0; }
+    }
+
+    if starts.is_empty() {
+        // Nothing that looks like a function — hand the whole file to the
+        // parser so its error points at the real problem.
+        return vec![(source.to_string(), 1)];
+    }
+
+    let mut chunks = Vec::new();
+
+    // Anything before the first function still has to be parsed, or a stray
+    // token above it would be silently dropped and never reported.
+    if starts[0] > 0 {
+        let head = lines[..starts[0]].join("\n");
+        if !head.trim().is_empty() {
+            chunks.push((head, 1));
+        }
+    }
+
+    for (idx, &start) in starts.iter().enumerate() {
+        let end = starts.get(idx + 1).copied().unwrap_or(lines.len());
+        chunks.push((lines[start..end].join("\n"), start + 1));
+    }
+
+    chunks
+}
+
+/// Net brace depth change across one line, ignoring braces inside string
+/// literals and after a `//` comment.
+fn brace_delta(line: &str) -> i32 {
+    let mut delta = 0i32;
+    let mut in_str = false;
+    let mut escaped = false;
+    let chars: Vec<char> = line.chars().collect();
+
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if in_str {
+            if escaped { escaped = false; }
+            else if c == '\\' { escaped = true; }
+            else if c == '"' { in_str = false; }
+        } else {
+            match c {
+                '"' => in_str = true,
+                '/' if chars.get(i + 1) == Some(&'/') => break,
+                '{' => delta += 1,
+                '}' => delta -= 1,
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    delta
+}
+
+// ── Pest error helpers ────────────────────────────────────────────────────────
+
+fn pest_error_location(e: &pest::error::Error<Rule>) -> (usize, usize) {
+    match e.line_col {
+        pest::error::LineColLocation::Pos((line, col)) => (line, col),
+        pest::error::LineColLocation::Span((line, col), _) => (line, col),
+    }
+}
+
+fn pest_error_message(e: &pest::error::Error<Rule>) -> String {
+    // Pest error Display includes the full source snippet — we just want
+    // the description line.
+    let full = format!("{}", e);
+    full.lines()
+        .find(|l| l.trim_start().starts_with('='))
+        .map(|l| l.trim_start_matches(|c| c == '=' || c == ' ').to_string())
+        .unwrap_or_else(|| "Syntax error".to_string())
+}
+
+// ── Span extraction ───────────────────────────────────────────────────────────
+
+fn span_of(pair: &Pair<Rule>) -> Span {
+    let (line, col) = pair.as_span().start_pos().line_col();
+    Span::new(line, col)
+}
+
+// ── Source file ───────────────────────────────────────────────────────────────
+
+fn parse_source(pair: Pair<Rule>) -> SourceFile {
+    let bullets = pair.into_inner()
+        .filter(|p| p.as_rule() == Rule::bullet)
+        .map(parse_bullet)
+        .collect();
+    SourceFile { bullets }
+}
+
+// ── Struct definition ─────────────────────────────────────────────────────────
+
+fn parse_struct_def(pair: Pair<Rule>) -> crate::ast::StructDef {
+    let mut inner = pair.into_inner();
+    let name      = inner.next().unwrap().as_str().to_string();
+    // struct_fields contains struct_field* children
+    let fields_pair = inner.next().unwrap();
+    let fields = fields_pair.into_inner()
+        .filter(|p| p.as_rule() == Rule::struct_field)
+        .map(|p| {
+            let mut fi = p.into_inner();
+            crate::ast::StructField {
+                name: fi.next().unwrap().as_str().to_string(),
+                ty:   parse_ty(fi.next().unwrap()),
+            }
+        })
+        .collect();
+    crate::ast::StructDef { name, fields }
+}
+
+fn parse_enum_def(pair: Pair<Rule>) -> crate::ast::EnumDef {
+    let mut inner = pair.into_inner();
+    let name      = inner.next().unwrap().as_str().to_string();
+    // enum_variants contains enum_variant* children
+    let variants_pair = inner.next().unwrap();
+    let variants = variants_pair.into_inner()
+        .filter(|p| p.as_rule() == Rule::enum_variant)
+        .map(|p| crate::ast::EnumVariant { name: p.as_str().to_string() })
+        .collect();
+    crate::ast::EnumDef { name, variants }
+}
+
+// ── Inventory file ────────────────────────────────────────────────────────────
+
+fn parse_inventory(pair: Pair<Rule>) -> Result<InventoryFile, Box<dyn std::error::Error>> {
+    let mut rank    = None;
+    let mut lang    = None;
+    let mut libs    = Vec::new();
+    let mut uses    = Vec::new();
+    let mut structs = Vec::new();
+    let mut enums   = Vec::new();
+    let mut natives = Vec::new();
+    let mut entries = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::dir_rank => {
+                rank = Rank::from_str(inner.into_inner().next().unwrap().as_str());
+            }
+            Rule::dir_lang => {
+                let ext = inner.into_inner().next().unwrap().as_str();
+                lang = Backend::from_ext(ext);
+            }
+            Rule::dir_lib => {
+                let name = inner.into_inner().next().unwrap().as_str().trim().to_string();
+                libs.push(name);
+            }
+            Rule::dir_use => {
+                let name = inner.into_inner().next().unwrap().as_str().trim().to_string();
+                uses.push(name);
+            }
+            Rule::struct_def => {
+                structs.push(parse_struct_def(inner));
+            }
+            Rule::enum_def => {
+                enums.push(parse_enum_def(inner));
+            }
+            Rule::native_block => {
+                natives.push(parse_native_block(inner.as_str()));
+            }
+            Rule::inv_entry => {
+                let mut ci    = inner.into_inner();
+                let file      = ci.next().unwrap().as_str().to_string();
+                let functions = ci.map(|p| p.as_str().to_string()).collect();
+                entries.push(InventoryEntry { file, functions });
+            }
+            Rule::EOI => {}
+            _         => {}
+        }
+    }
+
+    // The grammar requires #rank and restricts it to the six known names, so
+    // this cannot normally fail — but a parser is not entitled to abort the
+    // process on any input, so it is reported rather than asserted.
+    let rank = rank.ok_or_else(|| Box::<dyn std::error::Error>::from(
+        "inventory.bu is missing its '#rank:' directive"
+    ))?;
+
+    Ok(InventoryFile { rank, lang, libs, uses, structs, enums, natives, entries })
+}
+
+// ── Bullet ────────────────────────────────────────────────────────────────────
+
+fn parse_bullet(pair: Pair<Rule>) -> Bullet {
+    let bullet_span = span_of(&pair);
+    let mut inner   = pair.into_inner();
+    let name        = inner.next().unwrap().as_str().to_string();
+
+    // Optional type_params: "[T]" or "[K, V]"
+    let type_params = match inner.peek().map(|p| p.as_rule()) {
+        Some(Rule::type_params) => {
+            inner.next().unwrap().into_inner()
+                .map(|p| p.as_str().to_string())
+                .collect()
+        }
+        _ => vec![],
+    };
+
+    let params = parse_param_list(inner.next().unwrap());
+    let output = match inner.peek().map(|p| p.as_rule()) {
+        Some(Rule::output_decl) => Some(parse_output_decl(inner.next().unwrap())),
+        _                       => None,
+    };
+    let body   = parse_bullet_body(inner.next().unwrap());
+    Bullet { name, type_params, params, output, body, span: bullet_span }
+}
+
+fn parse_param_list(pair: Pair<Rule>) -> Vec<Param> {
+    pair.into_inner()
+        .filter(|p| p.as_rule() == Rule::param)
+        .map(|p| {
+            let mut pi = p.into_inner();
+            Param {
+                name: pi.next().unwrap().as_str().to_string(),
+                ty:   parse_ty(pi.next().unwrap()),
+            }
+        })
+        .collect()
+}
+
+fn parse_output_decl(pair: Pair<Rule>) -> OutputDecl {
+    let mut inner = pair.into_inner();
+    OutputDecl {
+        name: inner.next().unwrap().as_str().to_string(),
+        ty:   parse_ty(inner.next().unwrap()),
+    }
+}
+
+fn parse_bullet_body(pair: Pair<Rule>) -> BulletBody {
+    let children: Vec<Pair<Rule>> = pair.into_inner().collect();
+    // The grammar requires at least one of builtin_call / native_block / pipe+,
+    // so an empty body cannot reach here; treat it as an empty bullet list
+    // rather than aborting.
+    if children.is_empty() { return BulletBody::Pipes(Vec::new()); }
+
+    match children[0].as_rule() {
+        Rule::native_block => {
+            // Grammar enforces exactly one native block per function.
+            let block = parse_native_block(children[0].as_str());
+            BulletBody::Natives(vec![block])
+        }
+        Rule::builtin_call => {
+            let name = children[0].clone().into_inner()
+                .next().unwrap().as_str().to_string();
+            BulletBody::Builtin(name)
+        }
+        Rule::pipe => {
+            BulletBody::Pipes(children.into_iter().map(parse_pipe).collect())
+        }
+        other => unreachable!("unexpected bullet_body child: {:?}", other),
+    }
+}
+
+/// Split a captured escape block into its backend name and its contents.
+///
+/// The contents are kept byte for byte — indentation, tabs, blank lines and
+/// all. An escape block is a macro: Bullang decides where it starts, where it
+/// ends and which backend it names, and copies everything between into the
+/// generated file untouched. Reindenting it would be a guess about a language
+/// Bullang does not parse.
+fn parse_native_block(raw: &str) -> NativeBlock {
+    // raw is "@rust\n<code>@end" — the grammar guarantees a newline after the
+    // backend name, so "@rust@end" never reaches here.
+    let body = &raw[1..]; // strip leading '@'
+    let name_end = body.find('\n').unwrap_or(body.len());
+    let backend_str = body[..name_end].trim_end();
+    let after_name  = &body[(name_end + 1).min(body.len())..];
+    let code_end    = after_name.rfind("@end").unwrap_or(after_name.len());
+    let code        = after_name[..code_end].to_string();
+    let backend = match backend_str {
+        "rust"   => Backend::Rust,
+        "python" => Backend::Python,
+        "c"      => Backend::C,
+        "cpp"    => Backend::Cpp,
+        "go"     => Backend::Go,
+        "java"   => Backend::Java,
+        other    => Backend::Unknown(other.to_string()),
+    };
+    NativeBlock { backend, code }
+}
+
+// ── Pipe ──────────────────────────────────────────────────────────────────────
+
+fn parse_pipe(pair: Pair<Rule>) -> Pipe {
+    let pipe_span = span_of(&pair);
+    let mut inner = pair.into_inner();
+    let inputs: Vec<Expr> = inner.next().unwrap().into_inner()
+        .map(|p| Expr::Atom(parse_atom(p))).collect();
+    let expr      = parse_pipe_val(inner.next().unwrap());
+    let binding   = inner.next().unwrap().into_inner()
+        .next().map(|p| p.as_str().to_string());
+    Pipe { inputs, expr, binding, span: pipe_span }
+}
+
+fn parse_pipe_val(pair: Pair<Rule>) -> Expr {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::tuple_expr => Expr::Tuple(inner.into_inner().map(parse_expr).collect()),
+        // The bare `builtin::name` form: it takes its arguments from the
+        // bullet's input list, so it is a whole bullet expression and never an
+        // operand.
+        Rule::builtin_call => {
+            let name = inner.into_inner().next().unwrap().as_str().to_string();
+            Expr::Atom(Atom::BuiltinNoArgs(name))
+        }
+        Rule::expr => parse_expr(inner),
+        other => unreachable!("unexpected pipe_val: {:?}", other),
+    }
+}
+
+fn parse_expr(pair: Pair<Rule>) -> Expr {
+    let mut inner = pair.into_inner();
+    let lhs       = parse_atom(inner.next().unwrap());
+    match inner.next() {
+        Some(op_pair) => {
+            let op  = op_pair.as_str().trim().to_string();
+            let rhs = parse_atom(inner.next().unwrap());
+            Expr::BinOp(BinExpr { lhs, op, rhs })
+        }
+        None => Expr::Atom(lhs),
+    }
+}
+
+fn parse_atom(pair: Pair<Rule>) -> Atom {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::builtin_expr => {
+            let mut parts = inner.into_inner();
+            let name = parts.next().unwrap().as_str().to_string();
+            let args = parts.map(parse_expr).collect();
+            Atom::BuiltinExpr { name, args }
+        }
+        Rule::call => {
+            let mut ci = inner.into_inner();
+            let name   = ci.next().unwrap().as_str().to_string();
+            let args   = ci.map(parse_call_arg).collect();
+            Atom::Call { name, args }
+        }
+        Rule::float        => Atom::Float(inner.as_str().parse().unwrap()),
+        Rule::integer      => Atom::Integer(inner.as_str().parse().unwrap()),
+        Rule::ident        => Atom::Ident(inner.as_str().to_string()),
+        Rule::string_lit   => parse_string_atom(inner.as_str()),
+        Rule::field_access => {
+            let mut parts = inner.into_inner();
+            let base   = parts.next().unwrap().as_str().to_string();
+            let fields = parts.map(|p| p.as_str().to_string()).collect();
+            Atom::FieldAccess { base, fields }
+        }
+        Rule::index_expr => {
+            let mut parts = inner.into_inner();
+            let base = parts.next().unwrap().as_str().to_string();
+            let idx  = parse_expr(parts.next().unwrap());
+            Atom::Index { base, idx: Box::new(idx) }
+        }
+        Rule::slice_expr => {
+            let mut parts = inner.into_inner();
+            let base = parts.next().unwrap().as_str().to_string();
+            let from = parse_expr(parts.next().unwrap());
+            let to   = parse_expr(parts.next().unwrap());
+            Atom::Slice { base, from: Box::new(from), to: Box::new(to) }
+        }
+        Rule::unary_expr => {
+            let mut ui   = inner.into_inner();
+            let op       = ui.next().unwrap().as_str().to_string();
+            let rhs_pair = ui.next().unwrap();
+            let rhs      = parse_atom(rhs_pair);
+            Atom::Unary { op, rhs: Box::new(rhs) }
+        }
+        other => unreachable!("unexpected atom: {:?}", other),
+    }
+}
+
+/// Strip the outer quotes from a string literal and decide whether it contains
+/// `{ident}` interpolation placeholders.
+fn parse_string_atom(raw: &str) -> Atom {
+    // raw includes the surrounding quotes: "hello {name}"
+    let content = &raw[1..raw.len()-1];
+    if has_interp_vars(content) {
+        Atom::Interp(content.to_string())
+    } else {
+        Atom::StringLit(content.to_string())
+    }
+}
+
+/// True if the string contains at least one `{ident}` placeholder.
+fn has_interp_vars(s: &str) -> bool {
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '{' {
+            let ident_chars: String = chars.by_ref()
+                .take_while(|&x| x != '}')
+                .collect();
+            if !ident_chars.is_empty()
+                && ident_chars.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+                && ident_chars.chars().all(|c| c.is_alphanumeric() || c == '_')
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn parse_call_arg(pair: Pair<Rule>) -> CallArg {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::float        => CallArg::Value(inner.as_str().to_string()),
+        Rule::integer      => CallArg::Value(inner.as_str().to_string()),
+        Rule::ident        => CallArg::Value(inner.as_str().to_string()),
+        Rule::string_lit   => CallArg::Value(inner.as_str().to_string()),
+        Rule::field_access => CallArg::Value(inner.as_str().to_string()),
+        Rule::index_expr   => CallArg::Value(inner.as_str().to_string()),
+        Rule::slice_expr   => CallArg::Value(inner.as_str().to_string()),
+        other => unreachable!("unexpected call_arg: {:?}", other),
+    }
+}
+
+// ── Type ──────────────────────────────────────────────────────────────────────
+
+fn parse_ty(pair: Pair<Rule>) -> BuType {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::ty_unit  => BuType::Named("()".to_string()),
+        Rule::ty_tuple => {
+            // Tuple[T, U, ...] — walk ty_tuple_args inner types
+            let types: Vec<BuType> = inner.into_inner()
+                .flat_map(|p| p.into_inner())   // ty_tuple_args → its ty children
+                .filter(|p| p.as_rule() == Rule::ty)
+                .map(parse_ty)
+                .collect();
+            BuType::Tuple(types)
+        }
+        Rule::ty_atom    => BuType::Named(inner.as_str().trim().to_string()),
+        other => unreachable!("unexpected ty rule: {:?}", other),
+    }
+}
