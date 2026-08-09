@@ -454,14 +454,20 @@ func main() {
 
 	results := make(chan result, 1)
 
+	// Called from the install goroutine, so every widget touch goes through
+	// runOnMain — see runner.go. On Fyne 2.5 that calls straight through, as
+	// this always did; on 2.6 it becomes real main-thread dispatch, which 2.6
+	// requires and panics without.
 	appendLog := func(msg string) {
-		t := logOutput.Text
-		if t == "" {
-			logOutput.SetText(msg)
-		} else {
-			logOutput.SetText(t + "\n" + msg)
-		}
-		logScroll.ScrollToBottom()
+		runOnMain(func() {
+			t := logOutput.Text
+			if t == "" {
+				logOutput.SetText(msg)
+			} else {
+				logOutput.SetText(t + "\n" + msg)
+			}
+			logScroll.ScrollToBottom()
+		})
 	}
 
 	retryBtn := widget.NewButton("  Retry  ", nil)
@@ -484,9 +490,12 @@ func main() {
 
 		go func() {
 			for i, step := range steps {
-				stepLabel.SetText(step.label)
-				progress.SetValue(float64(i) / total)
-				appendLog(fmt.Sprintf("\n── %s", step.label))
+				label := step.label
+				runOnMain(func() {
+					stepLabel.SetText(label)
+					progress.SetValue(float64(i) / total)
+				})
+				appendLog(fmt.Sprintf("\n── %s", label))
 				if err := step.run(appendLog); err != nil {
 					appendLog(fmt.Sprintf("\n✗ FAILED: %v", err))
 					results <- result{err: err, stepName: step.label}
@@ -502,22 +511,27 @@ func main() {
 	go func() {
 		for r := range results {
 			if r.err != nil {
-				errorLabel.SetText(fmt.Sprintf(
-					"✗ Step failed: %s\n\nError: %v\n\nCheck the log above for details.",
-					r.stepName, r.err))
-				errorLabel.Show()
-				progress.Hide()
-				stepLabel.Hide()
-				installBtn.Enable()
-				retryBtn.Show()
-				w.Canvas().Refresh(w.Content())
+				rr := r
+				runOnMain(func() {
+					errorLabel.SetText(fmt.Sprintf(
+						"✗ Step failed: %s\n\nError: %v\n\nCheck the log above for details.",
+						rr.stepName, rr.err))
+					errorLabel.Show()
+					progress.Hide()
+					stepLabel.Hide()
+					installBtn.Enable()
+					retryBtn.Show()
+					w.Canvas().Refresh(w.Content())
+				})
 			} else if r.done {
-				progress.SetValue(1)
-				stepLabel.SetText("✓ Installation complete!")
+				runOnMain(func() {
+					progress.SetValue(1)
+					stepLabel.SetText("✓ Installation complete!")
+				})
 				appendLog("\n✓ Bullang ecosystem installed successfully.")
 				appendLog("  Bullarchy GUI shortcut created — find it in your applications menu.")
 				appendLog("  Restart your terminal, then run: bullarchy  or  bullscript")
-				w.Canvas().Refresh(w.Content())
+				runOnMain(func() { w.Canvas().Refresh(w.Content()) })
 			}
 		}
 	}()

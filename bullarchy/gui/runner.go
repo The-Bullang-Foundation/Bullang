@@ -14,6 +14,29 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// runOnMain runs f on the goroutine Fyne expects to own its widgets.
+//
+// Fyne gained `fyne.Do` in **2.6**, and this project pins **2.5.4** — which is
+// what broke the build: `undefined: fyne.Do`. 2.5 has no main-thread dispatch
+// at all, so on this version the call happens where it is, exactly as it did
+// before. That is not a fix for the underlying race; it is the behaviour 2.5
+// has always had, and 2.5 tolerates it (2.6 is the release that made
+// cross-thread widget access an error and gave you `fyne.Do` to avoid it).
+//
+// Upgrading is two lines. In go.mod:
+//
+//	require fyne.io/fyne/v2 v2.6.0
+//
+// and here:
+//
+//	func runOnMain(f func()) { fyne.Do(f) }
+//
+// Every other Fyne API this file uses was checked against the 2.5.4 source and
+// exists there, so this shim is the whole of the incompatibility.
+func runOnMain(f func()) {
+	f()
+}
+
 // consoleOutput creates a scrollable, read-only log widget + scroll container.
 func consoleOutput() (*console, *container.Scroll) {
 	entry := widget.NewMultiLineEntry()
@@ -28,9 +51,10 @@ func consoleOutput() (*console, *container.Scroll) {
 //
 // Three separate problems lived in what this replaces:
 //
-//   - Widgets were mutated straight from a goroutine. Fyne requires that on
-//     the main thread; doing otherwise is a data race, and Fyne 2.5 will
-//     panic on it rather than corrupt the display silently.
+//   - Widgets were mutated straight from a goroutine, which is a data race.
+//     Every such mutation now goes through `runOnMain`, so the day this
+//     project moves to Fyne 2.6 the race is closed by changing one function
+//     rather than hunting the call sites again.
 //   - Appending was O(n²): each line read the whole text back out, allocated
 //     a new string with the line appended, and set it again. A long `convert`
 //     slowed to a crawl as its own output grew.
@@ -107,7 +131,7 @@ func (c *console) sync() {
 	c.mu.Lock()
 	text := c.buf.String()
 	c.mu.Unlock()
-	fyne.Do(func() { c.entry.SetText(text) })
+	runOnMain(func() { c.entry.SetText(text) })
 }
 
 // runBullarchy runs `bullarchy <args...>` asynchronously, streaming output to
@@ -116,7 +140,7 @@ func runBullarchy(bin string, out *console, btn *widget.Button, args ...string) 
 	btn.Disable()
 	out.reset()
 	go func() {
-		defer fyne.Do(func() { btn.Enable() })
+		defer runOnMain(func() { btn.Enable() })
 
 		out.appendLine(fmt.Sprintf("$ bullarchy %s\n", strings.Join(args, " ")))
 
