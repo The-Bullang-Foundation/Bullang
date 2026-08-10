@@ -24,8 +24,8 @@ syn keyword bullscriptBool true false
 
 " ── Builtins and bag entries ─────────────────────────────────────────────────
 syn match bullscriptBuiltinNs "builtin::"
-syn keyword bullscriptBuiltinFn contained add capture close in open out run
-      \ to_lower to_upper trim
+syn keyword bullscriptBuiltinFn contained add capture close i64_to_str in
+      \ open out run str_to_i64 to_lower to_upper trim
 syn match bullscriptBuiltinBad "builtin::\zs[a-z_][a-z_0-9]*\>"
       \ contains=bullscriptBuiltinFn
 
