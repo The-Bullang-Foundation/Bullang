@@ -37,7 +37,7 @@ const PY_HELPER: &str = r#"def bu_env(key):
     return __import__("os").environ.get(key, "")
 "#;
 
-const C_HELPER: &str = r#"static const char	*bu_env(const char *key)
+const C_HELPER: &str = r#"static inline const char	*bu_env(const char *key)
 {
 	const char	*v;
 

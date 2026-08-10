@@ -170,7 +170,7 @@ pub const C_CORE: &str = r#"#define BU_MAX_FILES 64
 static FILE	*bu_files[BU_MAX_FILES];
 static int	bu_files_init = 0;
 
-static void	bu_io_init(void)
+static inline void	bu_io_init(void)
 {
 	if (bu_files_init)
 		return ;
@@ -181,7 +181,7 @@ static void	bu_io_init(void)
 }
 "#;
 
-pub const C_OPEN: &str = r#"static long long	bu_open(const char *path, const char *mode)
+pub const C_OPEN: &str = r#"static inline long long	bu_open(const char *path, const char *mode)
 {
 	const char	*m;
 	int			i;
@@ -212,7 +212,7 @@ pub const C_OPEN: &str = r#"static long long	bu_open(const char *path, const cha
 }
 "#;
 
-pub const C_CLOSE: &str = r#"static void	bu_close(long long fd)
+pub const C_CLOSE: &str = r#"static inline void	bu_close(long long fd)
 {
 	bu_io_init();
 	if (fd < 3 || fd >= BU_MAX_FILES || !bu_files[fd])
@@ -222,7 +222,7 @@ pub const C_CLOSE: &str = r#"static void	bu_close(long long fd)
 }
 "#;
 
-pub const C_OUT: &str = r#"static long long	bu_out(long long fd, const char *content)
+pub const C_OUT: &str = r#"static inline long long	bu_out(long long fd, const char *content)
 {
 	size_t	len;
 
@@ -237,7 +237,7 @@ pub const C_OUT: &str = r#"static long long	bu_out(long long fd, const char *con
 }
 "#;
 
-pub const C_IN: &str = r#"static char	*bu_in(char *dest, long long fd)
+pub const C_IN: &str = r#"static inline char	*bu_in(char *dest, long long fd)
 {
 	int		c;
 	size_t	i;

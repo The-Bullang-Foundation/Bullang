@@ -65,7 +65,7 @@ def bu_args(i):
 const C_HELPER: &str = r#"static int		bu_argc = 0;
 static char		**bu_argv = NULL;
 
-static const char	*bu_args(long long i)
+static inline const char	*bu_args(long long i)
 {
 	if (!bu_argv || i < 0 || i >= (long long)bu_argc)
 		return ("");

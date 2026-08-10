@@ -30,7 +30,7 @@ pub fn emit(params: &[Param], backend: &Backend) -> Result<String, String> {
 
 // A helper rather than an expression because the naive inline form evaluates
 // both arguments three times, and one of them may be a function call.
-const C_HELPER: &str = r#"static int	ft_ends_with(const char *s, const char *suffix)
+const C_HELPER: &str = r#"static inline int	ft_ends_with(const char *s, const char *suffix)
 {
 	size_t	slen;
 	size_t	xlen;

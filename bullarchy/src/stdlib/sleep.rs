@@ -43,7 +43,7 @@ const PY_HELPER: &str = r#"def bu_sleep(ms):
     __import__("time").sleep(ms / 1000.0)
 "#;
 
-const C_HELPER: &str = r#"static void	bu_sleep(long long ms)
+const C_HELPER: &str = r#"static inline void	bu_sleep(long long ms)
 {
 	struct timespec	ts;
 

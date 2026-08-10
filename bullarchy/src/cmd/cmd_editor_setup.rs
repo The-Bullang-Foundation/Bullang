@@ -1,7 +1,12 @@
 //! `bullarchy editor-setup` — writes LSP configuration for detected editors.
 //!
-//! Resolves the absolute path of the `bullang` binary for LSP configs.
-//! The LSP server is provided by `bullang lsp` — make sure bullang is installed.
+//! Resolves the absolute path of the `bullarchy` binary for LSP configs.
+//!
+//! The server is `bullarchy lsp`. Every config written here used to name
+//! `bullang lsp`, which is not a subcommand `bullang` has — `bullang` does
+//! `stdlib` and nothing else. So every editor this command configured was
+//! pointed at a process that exits immediately with "unrecognized subcommand",
+//! and no editor reported anything more useful than the server having died.
 
 const BULLANG_VIM_SYNTAX_URL: &str =
     "https://raw.githubusercontent.com/The-Bullang-Foundation/Bullang/main/vim/syntax/bullang.vim";
@@ -12,13 +17,21 @@ pub fn cmd_editor_setup() {
     let mut configured = 0usize;
     let mut skipped    = 0usize;
 
-    // Resolve the absolute path of the `bullang` binary for LSP configuration.
-    // The LSP server lives in bullang, not bullarchy. Falls back to "bullang"
-    // (relies on PATH) if `which` resolution fails.
-    let bin = which_bullang().unwrap_or_else(|| "bullang".to_string());
+    // The LSP server lives in bullarchy. Falls back to the bare name, which
+    // relies on PATH, if resolution fails.
+    let bin = which_bullarchy().unwrap_or_else(|| "bullarchy".to_string());
+    // BullScript has its own server, `bullscript lsp`, for `.busc` files. It is
+    // a separate binary from a separate repository, so it may well be absent —
+    // in which case the editors are configured for `.bu` only rather than for
+    // a command that is not there.
+    let bs_bin = which_binary("bullscript");
 
     println!("bullarchy editor-setup");
-    println!("  binary : {}", bin);
+    println!("  bullang  (.bu)   : {} lsp", bin);
+    match &bs_bin {
+        Some(b) => println!("  bullscript (.busc): {} lsp", b),
+        None    => println!("  bullscript (.busc): not installed \u{2014} .busc left unconfigured"),
+    }
     println!();
 
     // ── Neovim ───────────────────────────────────────────────────────────────
@@ -132,8 +145,24 @@ pub fn cmd_editor_setup() {
                 \n\
                 [language-server.bullang-lsp]\n\
                 command = \"{bin}\"\n\
-                args = [\"lsp\"]\n",
-                bin = bin
+                args = [\"lsp\"]\n{bs}",
+                bin = bin,
+                bs = match &bs_bin {
+                    Some(b) => format!(
+                        "\n[[language]]\n\
+                         name = \"bullscript\"\n\
+                         scope = \"source.bullscript\"\n\
+                         file-types = [\"busc\"]\n\
+                         comment-token = \"//\"\n\
+                         language-servers = [\"bullscript-lsp\"]\n\
+                         \n\
+                         [language-server.bullscript-lsp]\n\
+                         command = \"{b}\"\n\
+                         args = [\"lsp\"]\n",
+                        b = b
+                    ),
+                    None => String::new(),
+                }
             );
             let mut f = std::fs::OpenOptions::new()
                 .create(true).append(true).open(&lang_file)
@@ -179,16 +208,43 @@ pub fn cmd_editor_setup() {
     }
     println!();
 
+    // ── Zed ──────────────────────────────────────────────────────────────────
+    //
+    // Zed is the one editor here that cannot be configured by writing a file.
+    // Neovim, Vim, Helix and Emacs all accept "run this command for this file
+    // type" as configuration. Zed will not recognise a new language at all
+    // without an extension — a Rust crate compiled to WebAssembly, naming a
+    // tree-sitter grammar — so there is nothing this command can append to
+    // settings.json that would work.
+    //
+    // What it can do is set the file association, so `.bu` files at least open
+    // as Bullang once the extension is installed, and say where the extension
+    // is.
+    let zed_dir = std::path::PathBuf::from(&home).join(".config").join("zed");
+    if zed_dir.exists() {
+        println!("  [Zed] detected ({})", zed_dir.display());
+        println!("        Zed needs an extension, not a config entry — install it with:");
+        println!("          zed: install dev extension   →  Bullang/zed-bullang");
+        println!("        or from the extension registry once published.");
+        println!("        It runs `{} lsp`, found on your PATH.", bin);
+        if bs_bin.is_some() {
+            println!("        For .busc files, install Bullscript/zed-bullscript as well.");
+        }
+    } else {
+        println!("  [Zed] not detected (~/.config/zed not found)");
+    }
+    println!();
+
     // ── VS Code ───────────────────────────────────────────────────────────────
     println!("  [VS Code] install the extension (.vsix) from:");
     println!("            https://github.com/The-Bullang-Foundation/Bullang/releases");
-    println!("            The extension will use the bullang binary at: {}", bin);
+    println!("            The extension will use the bullarchy binary at: {}", bin);
     println!();
     println!("configured: {}   skipped (already set up): {}", configured, skipped);
     if configured > 0 {
         println!();
         println!("binary path embedded: {}", bin);
-        println!("if you move or reinstall bullang, re-run `bullarchy editor-setup`");
+        println!("if you move or reinstall bullarchy, re-run `bullarchy editor-setup`");
         println!("(delete the generated files first so they are regenerated)");
     }
 }
@@ -201,16 +257,23 @@ fn fetch_url(url: &str) -> Option<String> {
 
 // ── Helper: locate the bullang binary ────────────────────────────────────────
 
-/// Resolve the absolute path of the `bullang` binary via PATH.
-/// Returns None if bullang is not found — callers fall back to "bullang".
-fn which_bullang() -> Option<String> {
-    let output = std::process::Command::new("which")
-        .arg("bullang")
+fn which_bullarchy() -> Option<String> {
+    which_binary("bullarchy")
+}
+
+/// Resolve the absolute path of a binary via PATH.
+///
+/// `which` does not exist on Windows, where the equivalent is `where`.
+fn which_binary(name: &str) -> Option<String> {
+    let finder = if cfg!(windows) { "where" } else { "which" };
+    let output = std::process::Command::new(finder)
+        .arg(name)
         .output()
         .ok()?;
     if output.status.success() {
-        let path = String::from_utf8(output.stdout).ok()?;
-        Some(path.trim().to_string())
+        let out = String::from_utf8(output.stdout).ok()?;
+        // `where` can return several matches, one per line.
+        Some(out.lines().next()?.trim().to_string())
     } else {
         None
     }

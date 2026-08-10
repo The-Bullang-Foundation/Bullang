@@ -28,7 +28,7 @@ pub const ORDER: &[&str] = &[
 /// that convert numbers.
 pub const IMPORTS: &[&str] = &["#include <stddef.h>", "#include <string.h>"];
 
-pub const FT_STRLEN: &str = r#"static size_t	ft_strlen(const char *s)
+pub const FT_STRLEN: &str = r#"static inline size_t	ft_strlen(const char *s)
 {
 	size_t	i;
 
@@ -42,7 +42,7 @@ pub const FT_STRLEN: &str = r#"static size_t	ft_strlen(const char *s)
 /// Length in characters, not bytes: every byte that is not a UTF-8
 /// continuation byte starts one character. `len` is documented as counting
 /// characters in all six backends, and C was the one counting bytes.
-pub const FT_UTF8_LEN: &str = r#"static long long	ft_utf8_len(const char *s)
+pub const FT_UTF8_LEN: &str = r#"static inline long long	ft_utf8_len(const char *s)
 {
 	long long	n;
 	size_t		i;
@@ -59,7 +59,7 @@ pub const FT_UTF8_LEN: &str = r#"static long long	ft_utf8_len(const char *s)
 }
 "#;
 
-pub const FT_TO_UPPER: &str = r#"static void	ft_to_upper(char *dest, const char *src)
+pub const FT_TO_UPPER: &str = r#"static inline void	ft_to_upper(char *dest, const char *src)
 {
 	size_t	i;
 
@@ -76,7 +76,7 @@ pub const FT_TO_UPPER: &str = r#"static void	ft_to_upper(char *dest, const char 
 }
 "#;
 
-pub const FT_TO_LOWER: &str = r#"static void	ft_to_lower(char *dest, const char *src)
+pub const FT_TO_LOWER: &str = r#"static inline void	ft_to_lower(char *dest, const char *src)
 {
 	size_t	i;
 
@@ -93,13 +93,13 @@ pub const FT_TO_LOWER: &str = r#"static void	ft_to_lower(char *dest, const char 
 }
 "#;
 
-pub const FT_TRIM: &str = r#"static int	ft_is_space(char c)
+pub const FT_TRIM: &str = r#"static inline int	ft_is_space(char c)
 {
 	return (c == ' ' || c == '\t' || c == '\n'
 		|| c == '\v' || c == '\f' || c == '\r');
 }
 
-static void	ft_trim(char *dest, const char *src)
+static inline void	ft_trim(char *dest, const char *src)
 {
 	size_t	start;
 	size_t	end;
@@ -125,7 +125,7 @@ static void	ft_trim(char *dest, const char *src)
 /// the difference in length for every occurrence found, plus the terminator.
 /// Counting first is what lets the destination be a plain array — the old
 /// code guessed with `malloc` and could not have got this right in general.
-pub const FT_REPLACE: &str = r#"static size_t	ft_replace_size(const char *s, const char *from, const char *to)
+pub const FT_REPLACE: &str = r#"static inline size_t	ft_replace_size(const char *s, const char *from, const char *to)
 {
 	size_t	flen;
 	size_t	tlen;
@@ -151,7 +151,7 @@ pub const FT_REPLACE: &str = r#"static size_t	ft_replace_size(const char *s, con
 	return (ft_strlen(s) + n * tlen - n * flen + 1);
 }
 
-static void	ft_replace_str(char *dest, const char *s, const char *from,
+static inline void	ft_replace_str(char *dest, const char *s, const char *from,
 		const char *to)
 {
 	size_t	flen;
@@ -184,7 +184,7 @@ static void	ft_replace_str(char *dest, const char *s, const char *from,
 /// long` because negating it as a signed value is undefined.
 pub const FT_I64_TO_STR: &str = r#"#define BU_I64_STR_MAX 24
 
-static void	ft_i64_to_str(char *dest, long long v)
+static inline void	ft_i64_to_str(char *dest, long long v)
 {
 	unsigned long long	u;
 	char				tmp[BU_I64_STR_MAX];
