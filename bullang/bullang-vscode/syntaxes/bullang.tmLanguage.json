@@ -2,158 +2,239 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Bullang",
   "scopeName": "source.bullang",
+  "fileTypes": ["bu"],
+
+  "_comment": [
+    "This grammar is the reference token model for Bullang. The tree-sitter",
+    "queries (Zed, Helix, Neovim) and the Vim syntax file mirror it, so a change",
+    "here should be made in all of them.",
+    "",
+    "It is kept honest against three things: bullang/src/grammar.pest for the",
+    "shape of the language, `bullarchy stdlib` for the builtin names, and the",
+    "rank_val / lang_val rules for the directive values. Everything it used to",
+    "claim beyond those has been removed: i8..u128, usize, f32, char and str are",
+    "not Bullang types, Vec/Option/Result/Fn/Box/HashMap were removed from the",
+    "language, and #blueprint is not a directive."
+  ],
+
   "patterns": [
     { "include": "#comment" },
-    { "include": "#directive" },
-    { "include": "#function_decl" },
     { "include": "#native_block" },
-    { "include": "#builtin_call" },
-    { "include": "#enum_variant" },
-    { "include": "#pipe_arrow" },
+    { "include": "#directive" },
+    { "include": "#declaration" },
+    { "include": "#struct_enum" },
+    { "include": "#inventory_entry" },
+    { "include": "#builtin" },
     { "include": "#binding" },
-    { "include": "#rank_keyword" },
-    { "include": "#keyword" },
-    { "include": "#boolean" },
-    { "include": "#type" },
     { "include": "#string" },
     { "include": "#number" },
+    { "include": "#type" },
     { "include": "#operator" },
-    { "include": "#parameter" }
+    { "include": "#call" }
   ],
+
   "repository": {
-
     "comment": {
-      "name": "comment.line.double-slash.bullang",
-      "match": "//.*$"
-    },
-
-    "directive": {
-      "match": "(#rank|#lang|#lib|#blueprint)\\s*(:)\\s*([\\w./]+)\\s*(;)",
-      "captures": {
-        "1": { "name": "keyword.control.directive.bullang" },
-        "2": { "name": "punctuation.separator.bullang" },
-        "3": { "name": "entity.other.attribute-name.bullang" },
-        "4": { "name": "punctuation.terminator.bullang" }
-      }
-    },
-
-    "function_decl": {
-      "match": "\\b(let)\\s+([a-z_][a-zA-Z0-9_]*)\\s*(<[^>]*>)?\\s*\\(",
-      "captures": {
-        "1": { "name": "storage.type.function.bullang" },
-        "2": { "name": "entity.name.function.bullang" },
-        "3": { "name": "support.type.generic.parameter.bullang" }
-      }
+      "match": "//.*$",
+      "name": "comment.line.double-slash.bullang"
     },
 
     "native_block": {
-      "name": "meta.embedded.block.bullang",
-      "begin": "@(rust|python|c|cpp|go|java)\\b",
-      "end": "@end\\b",
+      "_comment": "Opaque by design: contents are another language and Bullang never reads them.",
+      "begin": "^\\s*(@)(rust|python|c|cpp|go|java)\\s*$",
       "beginCaptures": {
         "0": { "name": "keyword.control.native.begin.bullang" }
       },
+      "end": "^\\s*(@end)\\s*$",
       "endCaptures": {
         "0": { "name": "keyword.control.native.end.bullang" }
       },
+      "name": "meta.embedded.block.bullang",
       "contentName": "comment.block.embedded.bullang"
     },
 
-    "builtin_call": {
-      "match": "\\b(builtin)(::)([a-z_][a-z_0-9]*)\\b",
-      "captures": {
-        "1": { "name": "support.class.builtin.bullang" },
-        "2": { "name": "punctuation.accessor.bullang" },
-        "3": { "name": "support.function.builtin.bullang" }
-      }
-    },
-
-    "enum_variant": {
-      "match": "\\b([A-Z][a-zA-Z0-9_]*)(::)([A-Z][a-zA-Z0-9_]*)\\b",
-      "captures": {
-        "1": { "name": "entity.name.type.enum.bullang" },
-        "2": { "name": "punctuation.accessor.bullang" },
-        "3": { "name": "variable.other.enummember.bullang" }
-      }
-    },
-
-    "pipe_arrow": {
-      "name": "keyword.operator.arrow.bullang",
-      "match": "->"
-    },
-
-    "binding": {
-      "match": "\\{([a-z_][a-zA-Z0-9_]*)\\}",
-      "captures": {
-        "1": { "name": "variable.other.binding.bullang" }
-      }
-    },
-
-    "rank_keyword": {
-      "name": "storage.modifier.rank.bullang",
-      "match": "\\b(war|theater|battle|strategy|tactic|skirmish)\\b"
-    },
-
-    "keyword": {
-      "name": "keyword.declaration.bullang",
-      "match": "\\b(let|struct|enum|blueprint|native)\\b"
-    },
-
-    "boolean": {
-      "name": "constant.language.boolean.bullang",
-      "match": "\\b(true|false)\\b"
-    },
-
-    "type": {
+    "directive": {
       "patterns": [
         {
-          "name": "support.type.primitive.bullang",
-          "match": "\\b(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|bool|char|String|str)\\b"
+          "match": "(#rank)\\s*(:)\\s*(war|theater|battle|strategy|tactic|skirmish)\\s*(;)",
+          "captures": {
+            "1": { "name": "keyword.control.directive.bullang" },
+            "2": { "name": "punctuation.separator.bullang" },
+            "3": { "name": "storage.modifier.rank.bullang" },
+            "4": { "name": "punctuation.terminator.bullang" }
+          }
         },
         {
-          "name": "support.type.generic.bullang",
-          "match": "\\b(Vec|Option|Result|Tuple|Fn|Box|HashMap)(?=\\[)"
+          "match": "(#lang)\\s*(:)\\s*(rs|py|cpp|c|go|java)\\s*(;)",
+          "captures": {
+            "1": { "name": "keyword.control.directive.bullang" },
+            "2": { "name": "punctuation.separator.bullang" },
+            "3": { "name": "constant.language.lang.bullang" },
+            "4": { "name": "punctuation.terminator.bullang" }
+          }
         },
         {
-          "name": "entity.name.type.bullang",
-          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\b"
+          "_comment": "#lib is a native header or import of the target language; #use is a Bullang package. Different things, coloured differently.",
+          "match": "(#lib)\\s*(:)\\s*([^;\\n]+)\\s*(;)",
+          "captures": {
+            "1": { "name": "keyword.control.directive.bullang" },
+            "2": { "name": "punctuation.separator.bullang" },
+            "3": { "name": "string.unquoted.lib.bullang" },
+            "4": { "name": "punctuation.terminator.bullang" }
+          }
+        },
+        {
+          "match": "(#use)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(;)",
+          "captures": {
+            "1": { "name": "keyword.control.directive.bullang" },
+            "2": { "name": "punctuation.separator.bullang" },
+            "3": { "name": "entity.name.namespace.package.bullang" },
+            "4": { "name": "punctuation.terminator.bullang" }
+          }
         }
       ]
     },
 
-    "parameter": {
-      "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(:)\\s*([A-Z][a-zA-Z0-9_]*|i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|bool|char|String|str)\\b",
+    "declaration": {
+      "match": "\\b(let)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
       "captures": {
-        "1": { "name": "variable.parameter.bullang" },
-        "2": { "name": "punctuation.separator.type.bullang" },
-        "3": { "name": "support.type.primitive.bullang" }
+        "1": { "name": "keyword.declaration.bullang" },
+        "2": { "name": "entity.name.function.bullang" }
+      }
+    },
+
+    "struct_enum": {
+      "match": "\\b(struct|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.declaration.bullang" },
+        "2": { "name": "entity.name.type.bullang" }
+      }
+    },
+
+    "inventory_entry": {
+      "_comment": "`parser : parse_line, parse_word;` — a file, then the functions it holds.",
+      "match": "^\\s*([a-z_][a-zA-Z0-9_]*)\\s*(:)\\s*(?=[a-zA-Z_][a-zA-Z0-9_]*\\s*(,|;))",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.bullang" },
+        "2": { "name": "punctuation.separator.bullang" }
+      }
+    },
+
+    "builtin": {
+      "patterns": [
+        {
+          "_comment": "Known builtins, from `bullarchy stdlib`. A name outside this set is still highlighted, but as an unknown builtin — which is a useful signal in itself.",
+          "match": "\\b(builtin)(::)(argc|args|close|ends_with|env|exit|i64_to_str|in|len|max|min|open|out|replace_str|run|sleep|starts_with|str_to_i64|swap|tern|time|to_lower|to_upper|trim)\\b",
+          "captures": {
+            "1": { "name": "support.class.builtin.bullang" },
+            "2": { "name": "punctuation.accessor.bullang" },
+            "3": { "name": "support.function.builtin.bullang" }
+          }
+        },
+        {
+          "match": "\\b(builtin)(::)([a-z_][a-z_0-9]*)\\b",
+          "captures": {
+            "1": { "name": "support.class.builtin.bullang" },
+            "2": { "name": "punctuation.accessor.bullang" },
+            "3": { "name": "invalid.deprecated.unknown-builtin.bullang" }
+          }
+        }
+      ]
+    },
+
+    "binding": {
+      "_comment": "-> {name} names the bullet's result; -> {} discards it.",
+      "match": "(->)\\s*(\\{)\\s*([a-zA-Z_][a-zA-Z0-9_]*)?\\s*(\\})",
+      "captures": {
+        "1": { "name": "keyword.operator.arrow.bullang" },
+        "2": { "name": "punctuation.definition.binding.bullang" },
+        "3": { "name": "variable.other.binding.bullang" },
+        "4": { "name": "punctuation.definition.binding.bullang" }
       }
     },
 
     "string": {
-      "name": "string.quoted.double.bullang",
       "begin": "\"",
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.bullang" } },
       "end": "\"",
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.bullang" } },
+      "name": "string.quoted.double.bullang",
       "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.bullang" },
         {
-          "name": "constant.character.escape.bullang",
-          "match": "\\\\."
+          "_comment": "{name} interpolates a binding; {{ and }} are literal braces.",
+          "match": "\\{\\{|\\}\\}",
+          "name": "constant.character.escape.bullang"
         },
         {
-          "name": "variable.other.interpolated.bullang",
-          "match": "\\{[a-z_][a-zA-Z0-9_]*\\}"
+          "match": "(\\{)([a-zA-Z_][a-zA-Z0-9_]*)(\\})",
+          "captures": {
+            "1": { "name": "punctuation.definition.template-expression.bullang" },
+            "2": { "name": "variable.other.interpolated.bullang" },
+            "3": { "name": "punctuation.definition.template-expression.bullang" }
+          }
         }
       ]
     },
 
     "number": {
-      "name": "constant.numeric.bullang",
-      "match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?\\b"
+      "patterns": [
+        { "match": "\\b-?\\d+\\.\\d+\\b", "name": "constant.numeric.float.bullang" },
+        { "match": "\\b-?\\d+\\b", "name": "constant.numeric.integer.bullang" }
+      ]
+    },
+
+    "type": {
+      "patterns": [
+        {
+          "_comment": "Every type Bullang has. There are no others.",
+          "match": "\\b(i64|f64|bool|String)\\b",
+          "name": "support.type.primitive.bullang"
+        },
+        {
+          "_comment": "Tuple is the only bracketed type left; Vec, Option, Result, Fn, Box and HashMap were removed from the language.",
+          "match": "\\b(Tuple)(?=\\[)",
+          "name": "support.type.generic.bullang"
+        },
+        { "match": "\\b(true|false)\\b", "name": "constant.language.boolean.bullang" },
+        {
+          "_comment": "Direction.North — an enum variant.",
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)(\\.)([A-Z][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.type.enum.bullang" },
+            "2": { "name": "punctuation.accessor.bullang" },
+            "3": { "name": "variable.other.enummember.bullang" }
+          }
+        },
+        {
+          "_comment": "A capitalised name in type position: a struct or enum from inventory.bu.",
+          "match": "(:)\\s*([A-Z][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "punctuation.separator.type.bullang" },
+            "2": { "name": "entity.name.type.bullang" }
+          }
+        },
+        {
+          "match": "([a-z_][a-zA-Z0-9_]*)\\s*(:)\\s*(?=\\(|Tuple|i64|f64|bool|String|[A-Z])",
+          "captures": {
+            "1": { "name": "variable.parameter.bullang" },
+            "2": { "name": "punctuation.separator.type.bullang" }
+          }
+        }
+      ]
     },
 
     "operator": {
-      "name": "keyword.operator.bullang",
-      "match": "(==|!=|<=|>=|&&|\\|\\||->|::|!|[+\\-*/%<>]|:)"
+      "patterns": [
+        { "match": "->", "name": "keyword.operator.arrow.bullang" },
+        { "match": "\\.\\.", "name": "keyword.operator.range.bullang" },
+        { "match": "(==|!=|<=|>=|&&|\\|\\||[+\\-*/%<>!])", "name": "keyword.operator.bullang" }
+      ]
+    },
+
+    "call": {
+      "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+      "name": "entity.name.function.call.bullang"
     }
   }
 }

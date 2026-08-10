@@ -17,14 +17,17 @@ syn match bullangDirective "#\(rank\|lang\|lib\|use\)"
 syn keyword bullangRank war theater battle strategy tactic skirmish
 
 " ── Keywords ──────────────────────────────────────────────────────────────────
-syn keyword bullangKeyword let struct enum blueprint native
+" `blueprint` and `native` were never Bullang keywords — a blueprint is a file
+" passed to `bullarchy init`, and an escape block opens with @<backend>.
+syn keyword bullangKeyword let struct enum
 
 " ── Booleans ──────────────────────────────────────────────────────────────────
 syn keyword bullangBoolean true false
 
 " ── Primitive types ───────────────────────────────────────────────────────────
 " Bullang's type system is deliberately small — see the language README.
-syn keyword bullangType i32 i64 f64 bool String
+" Every type Bullang has. i32 was never one of them.
+syn keyword bullangType i64 f64 bool String
 syn keyword bullangType Tuple
 
 " ── Native blocks ─────────────────────────────────────────────────────────────
@@ -38,10 +41,17 @@ syn match bullangNativeDelim "@\(rust\|python\|c\|cpp\|go\|java\|end\)\b"
 
 " ── builtin:: calls ───────────────────────────────────────────────────────────
 syn match bullangBuiltinNs "builtin::"
-syn match bullangBuiltinFn "builtin::\zs[a-z_][a-z_0-9]*\b"
+" Known builtins, from `bullarchy stdlib`; anything else is flagged, which is
+" the same distinction the VS Code grammar and the tree-sitter queries make.
+syn keyword bullangBuiltinFn contained argc args close ends_with env exit
+      \ i64_to_str in len max min open out replace_str run sleep starts_with
+      \ str_to_i64 swap tern time to_lower to_upper trim
+syn match bullangBuiltinBad "builtin::\zs[a-z_][a-z_0-9]*\>"
+      \ contains=bullangBuiltinFn
 
 " ── Enum variants (Type::Variant) ─────────────────────────────────────────────
-syn match bullangEnumType "\b[A-Z][a-zA-Z0-9_]*\ze::"
+" An enum variant is Type.Variant — `::` belongs to builtin:: alone.
+syn match bullangEnumType "\<[A-Z][a-zA-Z0-9_]*\ze\.[A-Z]"
 syn match bullangEnumVariant "::\zs[A-Z][a-zA-Z0-9_]*\b"
 
 " ── Function name in declaration ──────────────────────────────────────────────
@@ -76,6 +86,7 @@ syn match bullangUserType "\b[A-Z][a-zA-Z0-9_]*\b"
 " Rust-inspired:
 hi def link bullangFuncName      Function
 hi def link bullangParam         Identifier
+hi def link bullangBuiltinBad    Error
 hi def link bullangType          Type
 hi def link bullangUserType      Type
 hi def link bullangEnumType      Type

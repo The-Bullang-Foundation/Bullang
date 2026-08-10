@@ -49,8 +49,8 @@
       "properties": {
         "bullang.serverPath": {
           "type": "string",
-          "default": "bullang",
-          "description": "Path to the bullang binary. Defaults to 'bullang' (must be on PATH)."
+          "default": "bullarchy",
+          "description": "Path to the bullarchy binary, which provides the language server (`bullarchy lsp`). Defaults to 'bullarchy' \u2014 must be on PATH."
         },
         "bullang.trace.server": {
           "type": "string",
@@ -60,7 +60,7 @@
             "verbose"
           ],
           "default": "off",
-          "description": "Trace LSP messages between VS Code and the Bullang server."
+          "description": "Trace LSP messages between VS Code and the Bullarchy language server."
         }
       }
     },

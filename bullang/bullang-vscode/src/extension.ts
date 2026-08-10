@@ -10,8 +10,12 @@ import {
 let client: LanguageClient | undefined;
 
 export function activate(context: ExtensionContext) {
-    const config     = workspace.getConfiguration('bullang');
-    const serverPath = config.get<string>('serverPath', 'bullang');
+    const config = workspace.getConfiguration('bullang');
+    // The server is `bullarchy lsp`. This defaulted to `bullang`, which has one
+    // subcommand — `stdlib` — so the client started a process that exited
+    // immediately with "unrecognized subcommand", and the only symptom was the
+    // server failing to start.
+    const serverPath = config.get<string>('serverPath', 'bullarchy');
 
     const serverOptions: ServerOptions = {
       run:   { command: serverPath, args: ['lsp'] },
@@ -35,7 +39,7 @@ export function activate(context: ExtensionContext) {
     client.start().catch(err => {
         window.showErrorMessage(
             `Bullang language server failed to start: ${err.message}\n` +
-            `Make sure 'bullang' is on your PATH, or set bullang.serverPath in settings.`
+            `Make sure 'bullarchy' is on your PATH, or set bullang.serverPath in settings.`
         );
     });
 }
