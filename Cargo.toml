@@ -13,6 +13,10 @@
 [workspace]
 resolver = "2"
 members  = ["bullang", "bullarchy"]
+# The Zed extension is a Rust crate but not part of this workspace: it compiles
+# to wasm32-wasip1 against zed_extension_api and is built by Zed, not by
+# `cargo build` here.
+exclude  = ["zed-bullang"]
 
 [workspace.package]
 version = "1.0.0"

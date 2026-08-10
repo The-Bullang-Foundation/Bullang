@@ -254,7 +254,12 @@ Writes LSP configuration for Vim, Neovim, Helix and Emacs. A VS Code extension
 lives in `bullang/bullang-vscode/`, and Vim syntax files in `bullang/vim/`.
 
 The language server runs as `bullarchy lsp` over stdin/stdout, and provides
-diagnostics, hover and go-to-definition.
+diagnostics, hover and go-to-definition. BullScript has its own, `bullscript
+lsp`, for `.busc` files; `editor-setup` configures both when both are
+installed.
+
+Zed is the one editor that cannot be configured by writing a file — it needs an
+extension, in `zed-bullang/`. See its README.
 
 ---
 
@@ -269,15 +274,22 @@ BullScript, the toolchain, and a quick-reference section.
 
 ```
 Bullang/
-├── Cargo.toml          workspace
-├── bullang/            the language
-│   ├── src/            grammar, AST, parser, formatter, catalogue
-│   ├── bullang-vscode/ VS Code extension
-│   └── vim/            Vim syntax files
-└── bullarchy/          the toolchain
-    ├── src/            codegen, validator, LSP, CLI
-    └── gui/            the graphical interface (Go / Fyne)
+├── Cargo.toml              workspace
+├── bullang/                the language
+│   ├── src/                grammar, AST, parser, formatter, catalogue
+│   ├── bullang-vscode/     VS Code extension
+│   └── vim/                Vim and Neovim syntax files
+├── bullarchy/              the toolchain
+│   ├── src/                codegen, validator, LSP, CLI
+│   └── gui/                the graphical interface (Go / Fyne)
+├── tree-sitter-bullang/    grammar for Zed and Helix
+├── zed-bullang/            Zed extension
+└── docs/                   the Bullang Book
 ```
+
+Editor support shares one token model across four files — the VS Code TextMate
+grammar is the reference, and the tree-sitter queries and Vim syntax mirror it.
+A change to the language's vocabulary is a change to all four.
 
 Building both:
 

@@ -1,0 +1,15 @@
+name = "Bullang"
+grammar = "bullang"
+# One extension for both source files and inventories — the grammar accepts
+# either shape, as Bullang's own parser does.
+path_suffixes = ["bu"]
+line_comments = ["// "]
+tab_size = 4
+hard_tabs = false
+
+brackets = [
+  { start = "{", end = "}", close = true, newline = true },
+  { start = "(", end = ")", close = true, newline = false },
+  { start = "[", end = "]", close = true, newline = false },
+  { start = "\"", end = "\"", close = true, newline = false, not_in = ["string", "comment"] },
+]

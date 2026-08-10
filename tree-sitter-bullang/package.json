@@ -1,0 +1,8 @@
+{
+  "name": "tree-sitter-bullang",
+  "version": "1.0.0",
+  "description": "Tree-sitter grammar for Bullang",
+  "license": "MIT",
+  "main": "bindings/node",
+  "tree-sitter": [{ "scope": "source.bullang", "file-types": ["bu"] }]
+}

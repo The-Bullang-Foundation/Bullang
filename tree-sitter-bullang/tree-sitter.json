@@ -1,0 +1,17 @@
+{
+  "grammars": [
+    {
+      "name": "bullang",
+      "camelcase": "Bullang",
+      "scope": "source.bullang",
+      "file-types": ["bu"],
+      "injection-regex": "^bullang$"
+    }
+  ],
+  "metadata": {
+    "version": "1.0.0",
+    "license": "MIT",
+    "description": "Tree-sitter grammar for Bullang",
+    "authors": [{ "name": "The Bullang Foundation" }]
+  }
+}

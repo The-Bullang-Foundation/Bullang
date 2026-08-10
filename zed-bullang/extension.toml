@@ -1,0 +1,15 @@
+id = "bullang"
+name = "Bullang"
+description = "Bullang language support: syntax highlighting and the Bullarchy language server."
+version = "1.0.0"
+schema_version = 1
+authors = ["The Bullang Foundation"]
+repository = "https://github.com/The-Bullang-Foundation/Bullang"
+
+[grammars.bullang]
+repository = "https://github.com/The-Bullang-Foundation/tree-sitter-bullang"
+rev = "REPLACE_WITH_COMMIT_SHA"
+
+[language_servers.bullarchy]
+name = "Bullarchy"
+languages = ["Bullang"]
