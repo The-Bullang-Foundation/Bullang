@@ -1,15 +1,20 @@
-id = "bullang"
-name = "Bullang"
-description = "Bullang language support: syntax highlighting and the Bullarchy language server."
+id = "bullscript"
+name = "BullScript"
+description = "BullScript language support: syntax highlighting and live syntax checking."
 version = "1.0.0"
 schema_version = 1
 authors = ["The Bullang Foundation"]
-repository = "https://github.com/The-Bullang-Foundation/Bullang"
+repository = "https://github.com/The-Bullang-Foundation/Bullscript"
 
-[grammars.bullang]
-repository = "https://github.com/The-Bullang-Foundation/tree-sitter-bullang"
-rev = "REPLACE_WITH_COMMIT_SHA"
+# The grammar lives in this same repository, under tree-sitter-bullscript/.
+# See the note in Bullang/zed-bullang/extension.toml: `path` names a
+# subdirectory of the cloned repository, so the grammar needs no repository of
+# its own, and `rev` must be a commit of this one that already contains it.
+[grammars.bullscript]
+repository = "https://github.com/The-Bullang-Foundation/Bullscript"
+rev = "590b009995a1e148bbc21d675e85745c5729466e"
+path = "tree-sitter-bullscript"
 
-[language_servers.bullarchy]
-name = "Bullarchy"
-languages = ["Bullang"]
+[language_servers.bullscript]
+name = "BullScript"
+languages = ["BullScript"]
