@@ -98,7 +98,7 @@ fn launch_gui() {
 
     for path in &candidates {
         if path.exists() {
-            match std::process::Command::new(path).spawn() {
+            match spawn_detached(path) {
                 Ok(_)  => return,
                 Err(e) => eprintln!("  Failed to launch GUI: {}", e),
             }
@@ -111,6 +111,42 @@ fn launch_gui() {
     eprintln!("  https://github.com/The-Bullang-Foundation/bullang-installer");
     eprintln!();
     run_cli_repl();
+}
+
+/// Start the GUI as an independent process and return.
+///
+/// A plain `spawn()` leaves the child holding this terminal. It inherits
+/// stdin, stdout and stderr, and — more importantly — it stays in the shell's
+/// foreground process group even after `bullarchy` itself exits. The terminal
+/// therefore stays occupied by a window that has nothing to say to it, and
+/// Ctrl+C is what frees it, because that signals the whole process group.
+///
+/// So: no inherited streams, and a process group of its own. The GUI reports
+/// in its window; it has no use for a terminal.
+fn spawn_detached(path: &std::path::Path) -> std::io::Result<std::process::Child> {
+    use std::process::Stdio;
+
+    let mut cmd = std::process::Command::new(path);
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    #[cfg(unix)]
+    {
+        // A new process group, so Ctrl+C in the terminal that launched it does
+        // not reach the GUI and the shell does not count it as part of the job.
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+
+    #[cfg(windows)]
+    {
+        // DETACHED_PROCESS: no console is inherited or created.
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0000_0008);
+    }
+
+    cmd.spawn()
 }
 
 // ── CLI REPL ──────────────────────────────────────────────────────────────────
